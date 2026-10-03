@@ -112,6 +112,12 @@ class ApiService {
           personName: personName
         })
       });
+      return await res.json();
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  }
+
   // 同步指定月份至損益表
   async syncPnL(year, month) {
     try {
