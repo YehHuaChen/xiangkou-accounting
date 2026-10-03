@@ -680,14 +680,16 @@ function getUnreimbursedText_() {
 
   for (let row = 1; row < data.length; row++) {
     const type = String(data[row][3] || '支出').trim();
+    const category = String(data[row][5] || '').trim();
     const account = String(data[row][6] || '').trim();
     const amount = Number(data[row][7]) || 0;
+    const note = String(data[row][8] || '').trim();
     const reimbursed = String(data[row][9] || '').trim();
 
     if (!account || account === '現金' || account === '公司' || reimbursed) continue;
 
     if (!totals[account]) {
-      totals[account] = { expense: 0, income: 0, net: 0, count: 0 };
+      totals[account] = { expense: 0, income: 0, net: 0, count: 0, items: [] };
     }
     totals[account].count += 1;
     if (type === '收入') {
@@ -696,6 +698,12 @@ function getUnreimbursedText_() {
       totals[account].expense += amount;
     }
     totals[account].net = totals[account].expense - totals[account].income;
+    totals[account].items.push({
+      type: type,
+      amount: amount,
+      category: category,
+      note: note
+    });
   }
 
   const names = Object.keys(totals);
@@ -706,15 +714,44 @@ function getUnreimbursedText_() {
   let text = '💸 代墊與代收未結算明細\n';
   names.forEach(function (name) {
     const t = totals[name];
+    text += '\n👤 ' + name + ':\n';
     if (t.net > 0) {
-      text += '\n👤 ' + name + ':\n  公司應還款: ' + t.net.toLocaleString() + ' 元 (代墊支出 ' + t.expense.toLocaleString() + ' / 代收抵扣 -' + t.income.toLocaleString() + ')';
+      text += '  公司應還款: ' + t.net.toLocaleString() + ' 元\n';
     } else if (t.net < 0) {
-      text += '\n👤 ' + name + ':\n  應繳回公司: ' + Math.abs(t.net).toLocaleString() + ' 元 (代收收入 ' + t.income.toLocaleString() + ' / 支出抵扣 -' + t.expense.toLocaleString() + ')';
+      text += '  應繳回公司: ' + Math.abs(t.net).toLocaleString() + ' 元\n';
     } else {
-      text += '\n👤 ' + name + ': 已打平 (0 元)';
+      text += '  已打平 (0 元)\n';
     }
+
+    // 組合算式
+    let formulaParts = [];
+    t.items.forEach(function (it) {
+      let label = it.note.replace(/^巷口麵店\s*\|\s*/i, '').trim();
+      if (!label) label = it.category || '款項';
+      const amt = Math.abs(it.amount);
+      if (it.type === '收入') {
+        formulaParts.push('-' + label + amt);
+      } else {
+        formulaParts.push(label + amt);
+      }
+    });
+
+    let formulaStr = '';
+    formulaParts.forEach(function (part, idx) {
+      if (idx === 0) {
+        formulaStr += part;
+      } else if (part.charAt(0) === '-') {
+        formulaStr += ' - ' + part.substring(1);
+      } else {
+        formulaStr += ' + ' + part;
+      }
+    });
+    formulaStr += ' = ' + t.net;
+
+    text += '  📐 算式: ' + formulaStr + '\n';
+    text += '  (共 ' + t.count + ' 筆，代墊 ' + t.expense.toLocaleString() + ' / 代收抵扣 ' + t.income.toLocaleString() + ')\n';
   });
-  text += '\n\n要標記已結清，輸入「已還 人名」，例如:已還 ' + names[0];
+  text += '\n要標記已結清，輸入「已還 人名」，例如:已還 ' + names[0];
   return text;
 }
 

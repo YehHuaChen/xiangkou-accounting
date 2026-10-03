@@ -753,3 +753,226 @@ body {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+/* ========================================================
+   代墊結算明細與算式卡片
+   ======================================================== */
+.reimburse-card {
+  background: #1c1c1e;
+  border: 1px solid #2c2c2e;
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+}
+
+.reimburse-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.reimburse-person-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.reimburse-status-net {
+  font-size: 15px;
+  font-weight: 700;
+  margin-top: 3px;
+}
+.reimburse-status-net.pay-out {
+  color: #34c759; /* 綠色：公司應還款 */
+}
+.reimburse-status-net.pay-in {
+  color: #ff9500; /* 橘色：應繳回公司 */
+}
+.reimburse-status-net.settled {
+  color: #8e8e93;
+}
+
+.reimburse-summary-sub {
+  font-size: 12px;
+  color: #8e8e93;
+  margin-top: 4px;
+}
+
+.reimburse-formula-container {
+  background: #141416;
+  border: 1px solid #333336;
+  border-radius: 10px;
+  padding: 12px;
+  margin: 12px 0;
+}
+
+.reimburse-formula-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.reimburse-formula-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #a1a1a6;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.copy-formula-btn {
+  background: #2c2c2e;
+  border: 1px solid #48484a;
+  color: #ffffff;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+.copy-formula-btn:hover {
+  background: #3a3a3c;
+  border-color: #636366;
+}
+.copy-formula-btn:active {
+  transform: scale(0.96);
+}
+
+.reimburse-formula-content {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", monospace;
+  font-size: 13.5px;
+  color: #30d158;
+  background: rgba(48, 209, 88, 0.08);
+  border-left: 3px solid #30d158;
+  padding: 10px 12px;
+  border-radius: 6px;
+  line-height: 1.55;
+  word-break: break-all;
+  user-select: all;
+  letter-spacing: 0.2px;
+}
+
+.reimburse-items-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #a1a1a6;
+  font-weight: 600;
+  margin: 12px 0 6px 0;
+  padding-top: 10px;
+  border-top: 1px solid #2c2c2e;
+}
+
+.reimburse-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.reimburse-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.reimburse-item-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.reimburse-date {
+  font-size: 11px;
+  color: #8e8e93;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.reimburse-title {
+  color: #ffffff;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reimburse-badge {
+  font-size: 10px;
+  color: #a1a1a6;
+  background: #2c2c2e;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.reimburse-who {
+  font-size: 10px;
+  color: #0a84ff;
+  background: rgba(10, 132, 255, 0.12);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.reimburse-amount {
+  font-weight: 600;
+  font-size: 13.5px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.reimburse-amount.plus {
+  color: #34c759;
+}
+.reimburse-amount.minus {
+  color: #ff9500;
+}
+
+.reimburse-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #2c2c2e;
+}
+
+.settle-person-btn {
+  background: #2c2c2e;
+  border: 1px solid #3a3a3c;
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.settle-person-btn:hover {
+  background: #3a3a3c;
+  border-color: #545458;
+}
+.settle-person-btn:active {
+  transform: scale(0.96);
+}
+

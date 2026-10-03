@@ -725,6 +725,8 @@ class BookkeepingApp {
 
     // 計算各帳戶未還款代墊加總 (支出為代墊，收入為代收扣除)
     const totals = {};
+    this.personFormulas = {};
+
     this.entries.forEach(item => {
       const acc = (item.account || '現金').trim();
       const reimbursed = String(item.reimbursed || '').trim();
@@ -732,7 +734,7 @@ class BookkeepingApp {
 
       const amt = Number(item.amount) || 0;
       if (!totals[acc]) {
-        totals[acc] = { expense: 0, income: 0, net: 0, count: 0 };
+        totals[acc] = { expense: 0, income: 0, net: 0, count: 0, items: [] };
       }
       totals[acc].count++;
       if (item.type === '收入') {
@@ -741,6 +743,7 @@ class BookkeepingApp {
         totals[acc].expense += amt;
       }
       totals[acc].net = totals[acc].expense - totals[acc].income;
+      totals[acc].items.push(item);
     });
 
     const names = Object.keys(totals);
@@ -754,35 +757,145 @@ class BookkeepingApp {
       return;
     }
 
-    let html = '<div style="display:flex; flex-direction:column; gap:12px;">';
+    let html = '<div style="display:flex; flex-direction:column; gap:14px;">';
     names.forEach(name => {
       const t = totals[name];
+
+      // 依日期先後排序
+      t.items.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+      // 狀態與金額提示
       let statusHtml = '';
       if (t.net > 0) {
-        statusHtml = `<div style="font-size:14px; color:#34c759; font-weight:700; margin-top:2px;">公司應還款: $${t.net.toLocaleString()}</div>`;
+        statusHtml = `<div class="reimburse-status-net pay-out">公司應還款: $${t.net.toLocaleString()}</div>`;
       } else if (t.net < 0) {
-        statusHtml = `<div style="font-size:14px; color:#ff9500; font-weight:700; margin-top:2px;">應繳回公司: $${Math.abs(t.net).toLocaleString()}</div>`;
+        statusHtml = `<div class="reimburse-status-net pay-in">應繳回公司: $${Math.abs(t.net).toLocaleString()}</div>`;
       } else {
-        statusHtml = `<div style="font-size:14px; color:#8e8e93; font-weight:700; margin-top:2px;">已打平: $0</div>`;
+        statusHtml = `<div class="reimburse-status-net settled">已打平: $0</div>`;
       }
 
-      const detailHtml = `<div style="font-size:11px; color:#8e8e93; margin-top:3px;">代墊支出 $${t.expense.toLocaleString()} · 代收收入 -$${t.income.toLocaleString()} (${t.count}筆)</div>`;
+      const summaryHtml = `<div class="reimburse-summary-sub">代墊支出 $${t.expense.toLocaleString()} · 代收扣除 -$${t.income.toLocaleString()} (共 ${t.count} 筆)</div>`;
+
+      // 組合對帳算式 (例如：公司11010 + 好市多10470 + cube11996 + 房租23000 + 上海16493 + 富邦20459 = 93428)
+      const formulaParts = [];
+      let itemsHtml = '';
+
+      t.items.forEach(item => {
+        let label = (item.note || '').trim();
+        label = label.replace(/^巷口麵店\s*\|\s*/i, '').trim();
+        if (!label) {
+          label = (item.category || item.section || '款項').trim();
+        }
+        const amt = Math.abs(Number(item.amount) || 0);
+        const isIncome = (item.type === '收入');
+
+        formulaParts.push({
+          sign: isIncome ? '-' : '+',
+          label: label,
+          amt: amt
+        });
+
+        const amtFormatted = isIncome ? `-$${amt.toLocaleString()}` : `+$${amt.toLocaleString()}`;
+        const amtClass = isIncome ? 'minus' : 'plus';
+        const dateRaw = (item.date || '').slice(5);
+        const dateDisplay = dateRaw ? dateRaw.replace('-', '/') : '';
+        const whoBadge = (item.displayName || item.operator) ? `<span class="reimburse-who">✍️ ${item.displayName || item.operator}</span>` : '';
+
+        itemsHtml += `
+          <div class="reimburse-item-row">
+            <div class="reimburse-item-left">
+              <span class="reimburse-date">${dateDisplay}</span>
+              <span class="reimburse-title">${label}</span>
+              <span class="reimburse-badge">${item.category || item.section || ''}</span>
+              ${whoBadge}
+            </div>
+            <div class="reimburse-amount ${amtClass}">${amtFormatted}</div>
+          </div>
+        `;
+      });
+
+      let formulaStr = '';
+      formulaParts.forEach((part, idx) => {
+        if (idx === 0) {
+          formulaStr += (part.sign === '-' ? `-${part.label}${part.amt}` : `${part.label}${part.amt}`);
+        } else {
+          formulaStr += (part.sign === '-' ? ` - ${part.label}${part.amt}` : ` + ${part.label}${part.amt}`);
+        }
+      });
+      formulaStr += ` = ${t.net}`;
+
+      // 儲存算式至物件供複製使用
+      this.personFormulas[name] = `${name}：\n${formulaStr}\n總計：$${t.net.toLocaleString()}`;
 
       html += `
-        <div style="background:#1a1a1c; border-radius:12px; padding:14px 16px; display:flex; justify-content:space-between; align-items:center;">
-          <div>
-            <div style="font-size:16px; font-weight:700; color:#fff;">👤 ${name}</div>
-            ${statusHtml}
-            ${detailHtml}
+        <div class="reimburse-card">
+          <div class="reimburse-card-header">
+            <div>
+              <div class="reimburse-person-name">👤 ${name}</div>
+              ${statusHtml}
+              ${summaryHtml}
+            </div>
           </div>
-          <button style="background:#2c2c2e; border:1px solid #3a3a3c; color:#fff; border-radius:8px; padding:8px 12px; font-size:13px; cursor:pointer;" onclick="app.markPersonReimbursed('${name}')">
-            標記已結清
-          </button>
+
+          <!-- 對帳算式方塊 -->
+          <div class="reimburse-formula-container">
+            <div class="reimburse-formula-header">
+              <span class="reimburse-formula-title">📐 對帳算式</span>
+              <button class="copy-formula-btn" onclick="app.copyFormula('${name}')">📋 複製算式</button>
+            </div>
+            <div class="reimburse-formula-content">${formulaStr}</div>
+          </div>
+
+          <!-- 逐筆明細清單 -->
+          <div class="reimburse-items-header">
+            <span>各筆明細 (${t.items.length} 筆)</span>
+            <span style="font-size:11px; color:#8e8e93;">依日期先後</span>
+          </div>
+          <div class="reimburse-items-list">
+            ${itemsHtml}
+          </div>
+
+          <div class="reimburse-card-actions">
+            <button class="settle-person-btn" onclick="app.markPersonReimbursed('${name}')">
+              標記已結清
+            </button>
+          </div>
         </div>
       `;
     });
     html += '</div>';
     this.unreimbursedListContent.innerHTML = html;
+  }
+
+  // 複製對帳算式到剪貼簿
+  copyFormula(personName) {
+    const text = this.personFormulas && this.personFormulas[personName];
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        this.showToast(`📋 已複製 ${personName} 的對帳算式！`);
+      }).catch(() => {
+        this.fallbackCopy(text, personName);
+      });
+    } else {
+      this.fallbackCopy(text, personName);
+    }
+  }
+
+  fallbackCopy(text, personName) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      this.showToast(`📋 已複製 ${personName} 的對帳算式！`);
+    } catch (e) {
+      prompt('請手動選取複製算式：', text);
+    }
+    document.body.removeChild(ta);
   }
 
   closeAccountsModal() {
