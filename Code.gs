@@ -162,12 +162,11 @@ function doGet(e) {
     return handleApiGet_(e.parameter);
   }
 
-  // 預設渲染原生 HTML 表單
-  return HtmlService.createTemplateFromFile('RecordForm')
-    .evaluate()
+  // 預設直接自動轉跳至 GitHub Pages 全新記帳網頁
+  const redirectHtml = '<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=https://yehhuachen.github.io/xiangkou-accounting/"></head><body><p>正在前往巷口麵店記帳… <a href="https://yehhuachen.github.io/xiangkou-accounting/">點此前往</a></p></body></html>';
+  return HtmlService.createHtmlOutput(redirectHtml)
     .setTitle('巷口麵店記帳')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
 // 處理 GET API (查帳、未還款)
@@ -407,24 +406,7 @@ function handleTextMessage_(event) {
 }
 
 function getRecordFormReplyText_() {
-  let liffId = '';
-  try {
-    liffId = getProp_('LIFF_ID');
-  } catch (err) {}
-
-  let webAppUrl = '';
-  try {
-    webAppUrl = ScriptApp.getService().getUrl();
-  } catch (err) {}
-
-  let text = '📝 點這裡打開記帳表單:\n';
-  if (liffId) {
-    text += '👉 LINE 專用: https://liff.line.me/' + liffId + '\n';
-  }
-  if (webAppUrl) {
-    text += '👉 備用網址: ' + webAppUrl;
-  }
-  return text.trim();
+  return '📝 點這裡打開記帳與查帳本:\n👉 https://yehhuachen.github.io/xiangkou-accounting/';
 }
 
 // ------------------------------------------------
@@ -449,8 +431,8 @@ function submitEntryFromForm(payload) {
   }
 
   const amount = parseFloat(payload.amount);
-  if (!payload.amount || isNaN(amount) || amount <= 0) {
-    return { success: false, message: '金額請輸入大於 0 的數字。' };
+  if (!payload.amount || isNaN(amount) || amount === 0) {
+    return { success: false, message: '金額請輸入非 0 的數字。' };
   }
 
   if (!payload.date) {

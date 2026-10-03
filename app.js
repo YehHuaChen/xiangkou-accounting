@@ -151,11 +151,31 @@ class BookkeepingApp {
     this.saveSettingsBtn = document.getElementById('save-settings-btn');
     this.syncPnlBtn = document.getElementById('sync-pnl-btn');
 
+    // 記帳人身分
+    this.operatorName = localStorage.getItem('xiangkou_operator') || '小花';
+    this.currentOperatorLabel = document.getElementById('current-operator-label');
+    this.changeOperatorBtn = document.getElementById('change-operator-btn');
+
     // Toast
     this.toast = document.getElementById('toast-msg');
   }
 
   bindEvents() {
+    // 切換記帳人身分
+    if (this.changeOperatorBtn) {
+      this.changeOperatorBtn.addEventListener('click', () => {
+        const name = prompt('請輸入這支手機的記帳人名字（例如：小花、羅、老闆）：', this.operatorName);
+        if (name && name.trim()) {
+          this.operatorName = name.trim();
+          localStorage.setItem('xiangkou_operator', this.operatorName);
+          if (this.currentOperatorLabel) {
+            this.currentOperatorLabel.textContent = this.operatorName;
+          }
+          this.showToast(`👤 已將本機記帳人設為：${this.operatorName}`);
+        }
+      });
+    }
+
     // 視圖切換 (行事曆 vs 清單)
     this.tabCalendar.addEventListener('click', () => this.switchView('calendar'));
     this.tabList.addEventListener('click', () => this.switchView('list'));
@@ -255,25 +275,6 @@ class BookkeepingApp {
 
   // 初始化分類清單
   initFormOptions() {
-    // 1. 生成快捷分類晶片 (Chips)
-    this.categoryChips.innerHTML = '';
-    QUICK_CHIPS.forEach(cat => {
-      const chip = document.createElement('div');
-      chip.className = 'category-chip';
-      const icon = getCategoryIcon(cat);
-      chip.innerHTML = `
-        <span class="chip-icon">${icon}</span>
-        <span>${cat}</span>
-      `;
-      chip.addEventListener('click', () => {
-        document.querySelectorAll('.category-chip').forEach(c => c.classList.remove('selected'));
-        chip.classList.add('selected');
-        this.entryCategorySelect.value = cat;
-      });
-      this.categoryChips.appendChild(chip);
-    });
-
-    // 2. 生成完整分類下拉選單
     this.entryCategorySelect.innerHTML = '';
     Object.keys(CATEGORIES_CONFIG).forEach(section => {
       const group = document.createElement('optgroup');
@@ -285,14 +286,6 @@ class BookkeepingApp {
         group.appendChild(opt);
       });
       this.entryCategorySelect.appendChild(group);
-    });
-
-    // 下拉選單連動晶片高亮
-    this.entryCategorySelect.addEventListener('change', () => {
-      const val = this.entryCategorySelect.value;
-      document.querySelectorAll('.category-chip').forEach(c => {
-        c.classList.toggle('selected', c.textContent.indexOf(val) !== -1);
-      });
     });
   }
 
@@ -533,6 +526,11 @@ class BookkeepingApp {
     // 副標題格式 (例如: 巷口麵店 | 角鋼)
     const subtitle = item.note ? `${item.note}` : '巷口麵店';
 
+    let accountBadgeText = item.account || '現金';
+    if (item.displayName && item.displayName !== item.account) {
+      accountBadgeText = `${item.account || '現金'} · ${item.displayName}`;
+    }
+
     el.innerHTML = `
       <div class="item-left">
         <div class="item-icon-badge">${icon}</div>
@@ -544,7 +542,7 @@ class BookkeepingApp {
       <div class="item-right">
         <div class="item-amount-group">
           <div class="item-amount ${amountClass}">${formattedAmount}</div>
-          <div class="item-account-badge">${item.account || '現金'}</div>
+          <div class="item-account-badge">${accountBadgeText}</div>
         </div>
         <button class="item-more-btn" title="選項">⋮</button>
       </div>
@@ -581,14 +579,15 @@ class BookkeepingApp {
     this.entryNote.value = '';
     this.entryCustomAccount.value = '';
     this.entryCustomAccount.style.display = 'none';
-    this.entryAccount.value = '現金';
+    this.entryAccount.value = '公司'; // 預設帳戶為公司
+
+    // 顯示當前記帳人身分
+    if (this.currentOperatorLabel) {
+      this.currentOperatorLabel.textContent = this.operatorName;
+    }
 
     // 預設支出
     this.typeBtnExpense.click();
-
-    // 預設選取第一個晶片
-    const firstChip = this.categoryChips.querySelector('.category-chip');
-    if (firstChip) firstChip.click();
 
     this.addModal.classList.add('active');
     setTimeout(() => this.entryAmount.focus(), 150);
@@ -602,8 +601,8 @@ class BookkeepingApp {
   async handleFormSubmit(e) {
     e.preventDefault();
     const amount = parseFloat(this.entryAmount.value);
-    if (!amount || isNaN(amount) || amount <= 0) {
-      alert('請輸入有效金額！');
+    if (isNaN(amount) || amount === 0) {
+      alert('請輸入有效金額（非 0，可為正負數）！');
       return;
     }
 
@@ -633,8 +632,8 @@ class BookkeepingApp {
       account: account,
       amount: amount,
       note: note,
-      userId: 'web_' + encodeURIComponent(account),
-      displayName: account
+      userId: 'web_' + encodeURIComponent(this.operatorName),
+      displayName: this.operatorName
     };
 
     // 樂觀更新 (立即顯示在介面上)
