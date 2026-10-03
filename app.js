@@ -723,13 +723,24 @@ class BookkeepingApp {
     this.accountsModal.classList.add('active');
     this.unreimbursedListContent.innerHTML = '<p style="text-align:center; padding:20px; color:#8e8e93;">計算中…</p>';
 
-    // 計算各帳戶未還款代墊加總
+    // 計算各帳戶未還款代墊加總 (支出為代墊，收入為代收扣除)
     const totals = {};
     this.entries.forEach(item => {
-      const acc = item.account || '現金';
-      if (acc !== '現金' && acc !== '公司') {
-        totals[acc] = (totals[acc] || 0) + (Number(item.amount) || 0);
+      const acc = (item.account || '現金').trim();
+      const reimbursed = String(item.reimbursed || '').trim();
+      if (!acc || acc === '現金' || acc === '公司' || reimbursed) return;
+
+      const amt = Number(item.amount) || 0;
+      if (!totals[acc]) {
+        totals[acc] = { expense: 0, income: 0, net: 0, count: 0 };
       }
+      totals[acc].count++;
+      if (item.type === '收入') {
+        totals[acc].income += amt;
+      } else {
+        totals[acc].expense += amt;
+      }
+      totals[acc].net = totals[acc].expense - totals[acc].income;
     });
 
     const names = Object.keys(totals);
@@ -745,13 +756,26 @@ class BookkeepingApp {
 
     let html = '<div style="display:flex; flex-direction:column; gap:12px;">';
     names.forEach(name => {
+      const t = totals[name];
+      let statusHtml = '';
+      if (t.net > 0) {
+        statusHtml = `<div style="font-size:14px; color:#34c759; font-weight:700; margin-top:2px;">公司應還款: $${t.net.toLocaleString()}</div>`;
+      } else if (t.net < 0) {
+        statusHtml = `<div style="font-size:14px; color:#ff9500; font-weight:700; margin-top:2px;">應繳回公司: $${Math.abs(t.net).toLocaleString()}</div>`;
+      } else {
+        statusHtml = `<div style="font-size:14px; color:#8e8e93; font-weight:700; margin-top:2px;">已打平: $0</div>`;
+      }
+
+      const detailHtml = `<div style="font-size:11px; color:#8e8e93; margin-top:3px;">代墊支出 $${t.expense.toLocaleString()} · 代收收入 -$${t.income.toLocaleString()} (${t.count}筆)</div>`;
+
       html += `
         <div style="background:#1a1a1c; border-radius:12px; padding:14px 16px; display:flex; justify-content:space-between; align-items:center;">
           <div>
             <div style="font-size:16px; font-weight:700; color:#fff;">👤 ${name}</div>
-            <div style="font-size:13px; color:#8e8e93; margin-top:2px;">代墊金額: $${totals[name].toLocaleString()}</div>
+            ${statusHtml}
+            ${detailHtml}
           </div>
-          <button style="background:#2c2c2e; border:1px solid #3a3a3c; color:#fff; border-radius:8px; padding:6px 12px; font-size:13px; cursor:pointer;" onclick="app.markPersonReimbursed('${name}')">
+          <button style="background:#2c2c2e; border:1px solid #3a3a3c; color:#fff; border-radius:8px; padding:8px 12px; font-size:13px; cursor:pointer;" onclick="app.markPersonReimbursed('${name}')">
             標記已結清
           </button>
         </div>
@@ -766,12 +790,16 @@ class BookkeepingApp {
   }
 
   markPersonReimbursed(personName) {
-    if (confirm(`確定已將「${personName}」的所有代墊款項結清還款嗎？`)) {
-      this.entries = this.entries.filter(e => e.account !== personName);
+    if (confirm(`確定已將「${personName}」的所有代墊與代收款項結清銷帳嗎？`)) {
+      this.entries.forEach(e => {
+        if (e.account === personName) {
+          e.reimbursed = '已結清';
+        }
+      });
       this.saveLocalEntries();
       this.render();
       this.openAccountsModal();
-      this.showToast(`✅ 已將 ${personName} 的代墊款項結清`);
+      this.showToast(`✅ 已將 ${personName} 的款項標記結清`);
       api.markReimbursed(personName);
     }
   }

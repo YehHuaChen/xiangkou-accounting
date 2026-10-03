@@ -223,12 +223,23 @@ function handleApiGet_(params) {
     const totals = {};
 
     for (let r = 1; r < data.length; r++) {
+      const type = String(data[r][3] || '支出').trim();
       const account = String(data[r][6] || '').trim();
       const amount = Number(data[r][7]) || 0;
       const reimbursed = String(data[r][9] || '').trim();
 
       if (!account || account === '現金' || account === '公司' || reimbursed) continue;
-      totals[account] = (totals[account] || 0) + amount;
+
+      if (!totals[account]) {
+        totals[account] = { expense: 0, income: 0, net: 0, count: 0 };
+      }
+      totals[account].count += 1;
+      if (type === '收入') {
+        totals[account].income += amount;
+      } else {
+        totals[account].expense += amount;
+      }
+      totals[account].net = totals[account].expense - totals[account].income;
     }
 
     return ContentService.createTextOutput(JSON.stringify({
@@ -665,33 +676,45 @@ function getCategoryListText_() {
 function getUnreimbursedText_() {
   const sheet = getRecordSheet_();
   const data = sheet.getDataRange().getValues();
-  const totals = {}; // { 人名: { count, amount } }
+  const totals = {};
 
   for (let row = 1; row < data.length; row++) {
+    const type = String(data[row][3] || '支出').trim();
     const account = String(data[row][6] || '').trim();
-    const amount = data[row][7];
+    const amount = Number(data[row][7]) || 0;
     const reimbursed = String(data[row][9] || '').trim();
 
-    if (!account || reimbursed) continue;
+    if (!account || account === '現金' || account === '公司' || reimbursed) continue;
 
     if (!totals[account]) {
-      totals[account] = { count: 0, amount: 0 };
+      totals[account] = { expense: 0, income: 0, net: 0, count: 0 };
     }
     totals[account].count += 1;
-    totals[account].amount += amount;
+    if (type === '收入') {
+      totals[account].income += amount;
+    } else {
+      totals[account].expense += amount;
+    }
+    totals[account].net = totals[account].expense - totals[account].income;
   }
 
   const names = Object.keys(totals);
   if (names.length === 0) {
-    return '目前沒有未還款的代墊紀錄';
+    return '目前沒有未結算的代墊紀錄';
   }
 
-  let text = '💸 代墊未還款\n';
+  let text = '💸 代墊與代收未結算明細\n';
   names.forEach(function (name) {
     const t = totals[name];
-    text += '\n👤 ' + name + ':' + t.amount + ' 元(' + t.count + ' 筆)';
+    if (t.net > 0) {
+      text += '\n👤 ' + name + ':\n  公司應還款: ' + t.net.toLocaleString() + ' 元 (代墊支出 ' + t.expense.toLocaleString() + ' / 代收抵扣 -' + t.income.toLocaleString() + ')';
+    } else if (t.net < 0) {
+      text += '\n👤 ' + name + ':\n  應繳回公司: ' + Math.abs(t.net).toLocaleString() + ' 元 (代收收入 ' + t.income.toLocaleString() + ' / 支出抵扣 -' + t.expense.toLocaleString() + ')';
+    } else {
+      text += '\n👤 ' + name + ': 已打平 (0 元)';
+    }
   });
-  text += '\n\n要標記已還,輸入「已還 人名」,例如:已還 ' + names[0];
+  text += '\n\n要標記已結清，輸入「已還 人名」，例如:已還 ' + names[0];
   return text;
 }
 
