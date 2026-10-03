@@ -1,0 +1,755 @@
+/* ========================================================
+   巷口麵店記帳 - 深色模式樣式 (復刻手機記帳 App 行事曆介面)
+   ======================================================== */
+
+:root {
+  --bg-primary: #000000;
+  --bg-surface: #121212;
+  --bg-card: #1c1c1e;
+  --bg-card-hover: #2c2c2e;
+  --bg-elevated: #252528;
+  
+  --text-primary: #ffffff;
+  --text-secondary: #8e8e93;
+  --text-muted: #545458;
+  --text-dimmed: #3a3a3c;
+  
+  --accent-red: #ff3b30;
+  --accent-red-badge: #e63946;
+  --accent-green: #34c759;
+  --accent-orange: #ff9500;
+  --accent-blue: #0a84ff;
+  
+  --border-subtle: #242426;
+  --border-light: #38383a;
+  
+  --font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: 15px;
+  line-height: 1.4;
+  overflow-x: hidden;
+  min-height: 100vh;
+  padding-top: var(--safe-top);
+  padding-bottom: calc(var(--safe-bottom) + 76px);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 應用程式容器 */
+#app {
+  max-width: 500px;
+  margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ========================================================
+   頂部導覽列 (Header)
+   ======================================================== */
+.top-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 8px;
+  background-color: var(--bg-primary);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.nav-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.today-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.today-btn:active {
+  background: var(--bg-card);
+}
+
+/* 視圖切換 (分段控制器: 行事曆 / 清單) */
+.view-segmented-control {
+  display: flex;
+  background-color: #1a1a1c;
+  border: 1px solid #28282a;
+  border-radius: 999px;
+  padding: 2px;
+}
+
+.segment-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 5px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.segment-btn.active {
+  background-color: #2c2c2e;
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 18px;
+  padding: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ========================================================
+   月份切換列 (Month Selector)
+   ======================================================== */
+.month-selector {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px 12px;
+  color: var(--text-primary);
+}
+
+.month-nav-arrow {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 18px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.month-nav-arrow:hover {
+  color: var(--text-primary);
+}
+
+.current-month-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.current-month-title span.dropdown-icon {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* ========================================================
+   行事曆網格 (Calendar Grid)
+   ======================================================== */
+.calendar-wrapper {
+  padding: 0 12px;
+}
+
+/* 星期欄位 */
+.weekdays-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  padding: 6px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.weekday.weekend {
+  color: #a1a1a6;
+}
+
+/* 日期網格 */
+.days-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  row-gap: 6px;
+}
+
+.day-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.day-number {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.15s ease;
+}
+
+/* 其他月份淡化 */
+.day-cell.other-month .day-number {
+  color: var(--text-muted);
+}
+
+/* 週末淡紅或特殊色彩 */
+.day-cell.sunday .day-number {
+  color: #ff6961;
+}
+.day-cell.other-month.sunday .day-number {
+  color: #5a2e2d;
+}
+
+/* 選取中的日期 (紅底圓圈，如截圖第 3 日) */
+.day-cell.selected .day-number {
+  background-color: var(--accent-red-badge) !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(230, 57, 70, 0.4);
+}
+
+/* 今天標記 (若是選中以外的今天，加個小外框) */
+.day-cell.is-today:not(.selected) .day-number {
+  border: 1px solid var(--accent-red-badge);
+}
+
+/* 記帳記號點 (Dots) */
+.day-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 6px;
+  margin-top: 1px;
+}
+
+.dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--accent-green);
+}
+.dot.income {
+  background-color: var(--accent-green);
+}
+.dot.expense {
+  background-color: var(--accent-green);
+}
+.dot.multiple {
+  background-color: #64d2ff;
+}
+
+/* ========================================================
+   當日/本月支出統計列 (Summary Bar)
+   ======================================================== */
+.summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-top: 8px;
+  background-color: #080808;
+}
+
+.summary-amount-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #d1d1d6;
+}
+
+.summary-amount-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.summary-tags {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* ========================================================
+   明細清單 (Transaction List)
+   ======================================================== */
+.transactions-container {
+  flex: 1;
+  padding: 8px 16px 24px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--text-muted);
+}
+.empty-state p {
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+.transaction-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--border-subtle);
+  position: relative;
+}
+
+.transaction-item:last-child {
+  border-bottom: none;
+}
+
+.item-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+}
+
+.item-icon-badge {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background-color: #1a1a1c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.item-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.item-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.item-amount-group {
+  text-align: right;
+}
+
+.item-amount {
+  font-size: 17px;
+  font-weight: 700;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+}
+
+.item-amount.income {
+  color: var(--accent-green);
+}
+.item-amount.expense {
+  color: #ffffff;
+}
+
+.item-account-badge {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.item-more-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  padding: 8px 4px;
+  cursor: pointer;
+}
+.item-more-btn:active {
+  color: var(--text-primary);
+}
+
+/* ========================================================
+   清單視圖模式 (List View)
+   ======================================================== */
+.list-view-group {
+  margin-bottom: 20px;
+}
+
+.list-view-date-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 4px 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid #28282a;
+}
+
+/* ========================================================
+   底部導覽列 (Bottom Nav Bar)
+   ======================================================== */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: rgba(14, 14, 15, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 6px 10px calc(var(--safe-bottom) + 6px);
+  z-index: 50;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  flex: 1;
+}
+
+.nav-item.active {
+  color: var(--text-primary);
+}
+
+.nav-item-icon {
+  font-size: 20px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 中央「+ 記一筆」按鈕 */
+.nav-item.add-btn-item {
+  color: #ffffff;
+}
+
+.add-circle-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #2c2c2e;
+  border: 1px solid #3a3a3c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  margin-bottom: 2px;
+  transition: transform 0.15s ease;
+}
+
+.nav-item.add-btn-item:active .add-circle-btn {
+  transform: scale(0.92);
+  background: #3a3a3c;
+}
+
+/* ========================================================
+   彈出視窗 (Modal Sheet)
+   ======================================================== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.modal-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-sheet {
+  background-color: var(--bg-card);
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
+  border-radius: 20px 20px 0 0;
+  padding: 20px 20px calc(var(--safe-bottom) + 24px);
+  max-height: 90vh;
+  overflow-y: auto;
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 -8px 32px rgba(0,0,0,0.6);
+}
+
+.modal-overlay.active .modal-sheet {
+  transform: translateY(0);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.modal-close-btn {
+  background: #2c2c2e;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 表單元件 */
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.form-input, .form-select {
+  width: 100%;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 16px;
+  color: var(--text-primary);
+  font-family: inherit;
+  outline: none;
+}
+.form-input:focus, .form-select:focus {
+  border-color: var(--accent-red-badge);
+}
+
+.amount-input-box {
+  display: flex;
+  align-items: center;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 8px 14px;
+}
+
+.amount-input-box span.currency {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-right: 8px;
+}
+
+.amount-input-box input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 28px;
+  font-weight: 700;
+  color: #ffffff;
+  text-align: right;
+}
+
+/* 支出 / 收入 切換鈕 */
+.type-toggle-pills {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.type-pill {
+  flex: 1;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-light);
+  background-color: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.type-pill.active.expense {
+  background-color: rgba(255, 59, 48, 0.2);
+  border-color: var(--accent-red);
+  color: var(--accent-red);
+}
+
+.type-pill.active.income {
+  background-color: rgba(52, 199, 89, 0.2);
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+}
+
+/* 快捷分類按鈕區 */
+.category-chips-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.category-chip {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  padding: 8px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.category-chip.selected {
+  border-color: var(--accent-red-badge);
+  background-color: rgba(230, 57, 70, 0.15);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.category-chip .chip-icon {
+  font-size: 18px;
+}
+
+/* 表單按鈕 */
+.submit-btn {
+  width: 100%;
+  padding: 15px;
+  border-radius: 12px;
+  border: none;
+  background-color: var(--accent-red-badge);
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: opacity 0.2s ease;
+}
+.submit-btn:disabled {
+  opacity: 0.5;
+}
+
+/* 提示橫幅 (Banner) */
+.toast-msg {
+  position: fixed;
+  top: calc(var(--safe-top) + 60px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  background-color: #2c2c2e;
+  border: 1px solid #3a3a3c;
+  color: #ffffff;
+  padding: 10px 20px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  z-index: 200;
+  opacity: 0;
+  transition: all 0.3s ease;
+  pointer-events: none;
+}
+
+.toast-msg.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

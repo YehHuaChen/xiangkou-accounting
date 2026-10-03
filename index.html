@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <title>巷口麵店記帳</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#000000">
+  <link rel="apple-touch-icon" href="https://img.icons8.com/color/192/noodle.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+  <!-- 頂部導覽列 -->
+  <header class="top-nav">
+    <div class="nav-left">
+      <button class="today-btn" id="today-btn" title="回到今天">
+        <span>📖</span> 今天
+      </button>
+    </div>
+    
+    <!-- 視圖切換 (行事曆 / 清單) -->
+    <div class="view-segmented-control">
+      <button class="segment-btn active" id="tab-calendar">行事曆</button>
+      <button class="segment-btn" id="tab-list">清單</button>
+    </div>
+
+    <div class="nav-right">
+      <button class="icon-btn" id="search-btn" title="搜尋">🔍</button>
+      <button class="icon-btn" id="filter-btn" title="篩選">⛶</button>
+    </div>
+  </header>
+
+  <!-- 月份切換列 -->
+  <section class="month-selector">
+    <button class="month-nav-arrow" id="prev-month-btn">〈</button>
+    <div class="current-month-title" id="month-picker-trigger">
+      <span id="month-display">2026年9月</span>
+      <span class="dropdown-icon">▼</span>
+    </div>
+    <button class="month-nav-arrow" id="next-month-btn">〉</button>
+  </section>
+
+  <!-- 行事曆主體 (行事曆模式) -->
+  <div id="calendar-view" class="calendar-wrapper">
+    <!-- 星期列 -->
+    <div class="weekdays-row">
+      <div class="weekday weekend">週日</div>
+      <div class="weekday">週一</div>
+      <div class="weekday">週二</div>
+      <div class="weekday">週三</div>
+      <div class="weekday">週四</div>
+      <div class="weekday">週五</div>
+      <div class="weekday weekend">週六</div>
+    </div>
+
+    <!-- 日期格子 -->
+    <div class="days-grid" id="days-grid">
+      <!-- 由 JavaScript 動態生成 -->
+    </div>
+  </div>
+
+  <!-- 統計加總列 (如截圖: 支出: 16,083) -->
+  <section class="summary-bar">
+    <div class="summary-amount-label">
+      <span id="summary-type-label">支出</span>:
+      <span class="summary-amount-value" id="summary-amount">0</span>
+    </div>
+    <div class="summary-tags" id="summary-details">
+      <!-- 點擊特定日期的明細小提示 -->
+    </div>
+  </section>
+
+  <!-- 明細列表容器 -->
+  <main class="transactions-container" id="transactions-container">
+    <div id="transactions-list">
+      <!-- 由 JavaScript 動態渲染當日明細 -->
+    </div>
+  </main>
+
+  <!-- 底部常駐導覽列 -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" id="nav-home">
+      <div class="nav-item-icon">📝</div>
+      <span>巷口麵店</span>
+    </button>
+    <button class="nav-item" id="nav-accounts">
+      <div class="nav-item-icon">🏛️</div>
+      <span>帳戶</span>
+    </button>
+    <button class="nav-item add-btn-item" id="nav-add">
+      <div class="add-circle-btn">＋</div>
+      <span>記一筆</span>
+    </button>
+    <button class="nav-item" id="nav-charts">
+      <div class="nav-item-icon">📊</div>
+      <span>圖表分析</span>
+    </button>
+    <button class="nav-item" id="nav-settings">
+      <div class="nav-item-icon">⚙️</div>
+      <span>設定</span>
+    </button>
+  </nav>
+
+  <!-- ================= 彈出視窗 1: 記一筆 (新增表單) ================= -->
+  <div class="modal-overlay" id="add-modal">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h3 class="modal-title">記一筆</h3>
+        <button class="modal-close-btn" id="close-add-modal">✕</button>
+      </div>
+
+      <form id="record-form">
+        <!-- 支出 / 收入 切換 -->
+        <div class="type-toggle-pills">
+          <button type="button" class="type-pill active expense" id="type-btn-expense">支出</button>
+          <button type="button" class="type-pill income" id="type-btn-income">收入</button>
+        </div>
+
+        <!-- 金額輸入 -->
+        <div class="form-group">
+          <label class="form-label">金額</label>
+          <div class="amount-input-box">
+            <span class="currency">$</span>
+            <input type="number" id="entry-amount" inputmode="decimal" placeholder="0" required min="0.01" step="any" autofocus>
+          </div>
+        </div>
+
+        <!-- 日期選擇 -->
+        <div class="form-group">
+          <label class="form-label">日期</label>
+          <input type="date" class="form-input" id="entry-date" required>
+        </div>
+
+        <!-- 常用分類快捷晶片 (Chips) -->
+        <div class="form-group">
+          <label class="form-label">分類</label>
+          <div class="category-chips-grid" id="category-chips">
+            <!-- 由 JS 產生常用圖示晶片 -->
+          </div>
+          <select class="form-select" id="entry-category-select" style="margin-top:8px;">
+            <!-- 完整分類下拉選單 -->
+          </select>
+        </div>
+
+        <!-- 帳戶 / 代墊人 -->
+        <div class="form-group">
+          <label class="form-label">帳戶 / 代墊人</label>
+          <select class="form-select" id="entry-account">
+            <option value="現金">現金</option>
+            <option value="小花">小花</option>
+            <option value="羅">羅</option>
+            <option value="公司">公司</option>
+            <option value="__other__">其他 (手動輸入)</option>
+          </select>
+          <input type="text" class="form-input" id="entry-custom-account" placeholder="輸入代墊人名字" style="display:none; margin-top:8px;">
+        </div>
+
+        <!-- 備註說明 -->
+        <div class="form-group">
+          <label class="form-label">備註 (選填)</label>
+          <input type="text" class="form-input" id="entry-note" placeholder="例如：角鋼、飯鍋、水餃進貨">
+        </div>
+
+        <button type="submit" class="submit-btn" id="submit-record-btn">送出記帳</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= 彈出視窗 2: 帳戶與代墊未還款 ================= -->
+  <div class="modal-overlay" id="accounts-modal">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h3 class="modal-title">帳戶與代墊結算</h3>
+        <button class="modal-close-btn" id="close-accounts-modal">✕</button>
+      </div>
+      <div id="unreimbursed-list-content">
+        <div class="empty-state">
+          <p>載入代墊資訊中…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 彈出視窗 3: 設定 (API 串接) ================= -->
+  <div class="modal-overlay" id="settings-modal">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h3 class="modal-title">設定與連線</h3>
+        <button class="modal-close-btn" id="close-settings-modal">✕</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Google Apps Script API 網址</label>
+        <input type="text" class="form-input" id="setting-gas-url" placeholder="https://script.google.com/macros/s/.../exec">
+        <p style="font-size:12px; color:var(--text-secondary); margin-top:6px;">
+          在此填入您 Google Apps Script 部署的網址，網頁將會自動與 Google 試算表同步。
+        </p>
+      </div>
+      <button type="button" class="submit-btn" id="save-settings-btn" style="background:#2c2c2e; margin-bottom:12px;">儲存設定並同步</button>
+      
+      <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border-subtle);">
+        <p style="font-size:13px; color:var(--text-secondary); margin-bottom:8px;">快速捷徑：</p>
+        <a href="https://docs.google.com/spreadsheets/d/1TKugH9VhO3UGHutqKy7nS1gvQPdzZk4RbcNDSO4xmg8/edit" target="_blank" class="form-input" style="display:block; text-align:center; text-decoration:none; margin-bottom:8px;">
+          📊 打開「記帳本」Google Sheet
+        </a>
+        <a href="https://docs.google.com/spreadsheets/d/1aIzcQLEHF7t1MwAQXCPOlwJxGLsF6fX9dagtnh4fhvM/edit" target="_blank" class="form-input" style="display:block; text-align:center; text-decoration:none;">
+          📈 打開「巷口麵店損益表」Google Sheet
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 提示橫幅 -->
+  <div class="toast-msg" id="toast-msg"></div>
+</div>
+
+<script src="icons.js"></script>
+<script src="api.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
