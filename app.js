@@ -52,20 +52,10 @@ const DEMO_ENTRIES = [
 class BookkeepingApp {
   constructor() {
     const now = new Date();
-    // 預設設定為 2026 年 9 月 (完美對齊截圖)，若已過期則以當前年月為主
+    // 預設永遠精準對齊「今天」的真實日期與真實月份
     this.currentYear = now.getFullYear();
     this.currentMonth = now.getMonth() + 1; // 1-12
-    
-    // 如果當前年份剛好是 2026，且為了呈現截圖畫面，預設為 2026-09-03
     this.selectedDate = this.formatDate(now);
-    if (this.currentYear === 2026 && this.currentMonth === 9) {
-      this.selectedDate = '2026-09-03';
-    } else {
-      // 也可以預設為 2026-09-03 方便直接檢視截圖效果
-      this.currentYear = 2026;
-      this.currentMonth = 9;
-      this.selectedDate = '2026-09-03';
-    }
 
     this.currentView = 'calendar'; // 'calendar' 或 'list'
     this.entries = this.loadLocalEntries();
@@ -643,6 +633,9 @@ class BookkeepingApp {
       const res = await api.addEntry(payload);
       if (res && res.success) {
         console.log('同步至 Google Sheet 成功:', res);
+        this.syncFromBackend();
+      } else if (res && !res.success) {
+        console.warn('雲端寫入提示:', res.message);
       }
     } catch (err) {
       console.warn('同步至雲端失敗 (仍保存在手機上):', err);
@@ -731,8 +724,8 @@ class BookkeepingApp {
 
   // 從 Google Sheet 後端同步最新資料
   async syncFromBackend() {
-    const res = await api.getEntries(this.currentYear, this.currentMonth);
-    if (res && res.success && Array.isArray(res.entries) && res.entries.length > 0) {
+    const res = await api.getEntries();
+    if (res && res.success && Array.isArray(res.entries)) {
       console.log('從 Google Sheet 同步到新資料:', res.entries.length, '筆');
       this.entries = res.entries;
       this.saveLocalEntries();

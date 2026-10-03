@@ -1,9 +1,16 @@
 // API 模組：與 Google Apps Script (GAS) 進行通訊
-const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycby6wAisFXlwFaNLyijrmLep1juG1jOMWEL742BFA0ArwaXJMXiW5Yl209RoN1xi7wtc/exec';
+const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxS8cTM0kOmzwqvIXqF6a5vMnnVGht3Xy-0IRebsJi5kdnKsbpEVQdvzOQbGXEV7YAzeQ/exec';
 
 class ApiService {
   constructor() {
-    this.apiUrl = localStorage.getItem('xiangkou_gas_url') || DEFAULT_GAS_URL;
+    const saved = localStorage.getItem('xiangkou_gas_url');
+    // 如果快取是舊的失效網址，強制更新
+    if (!saved || saved.indexOf('AKfycby6') !== -1) {
+      this.apiUrl = DEFAULT_GAS_URL;
+      localStorage.setItem('xiangkou_gas_url', DEFAULT_GAS_URL);
+    } else {
+      this.apiUrl = saved;
+    }
   }
 
   setApiUrl(url) {
@@ -15,14 +22,17 @@ class ApiService {
     return this.apiUrl;
   }
 
-  // 取得某年月的記帳紀錄
+  // 取得某年月的記帳紀錄 (不帶參數則拉取全體記錄)
   async getEntries(year, month) {
     if (!this.apiUrl) {
       return { success: false, entries: [] };
     }
 
     try {
-      const url = `${this.apiUrl}?action=getEntries&year=${year}&month=${month}&_t=${Date.now()}`;
+      let url = `${this.apiUrl}?action=getEntries&_t=${Date.now()}`;
+      if (year && month) {
+        url += `&year=${year}&month=${month}`;
+      }
       const res = await fetch(url);
       const data = await res.json();
       return data;
