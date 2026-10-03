@@ -112,9 +112,27 @@ class ApiService {
           personName: personName
         })
       });
+  // 同步指定月份至損益表
+  async syncPnL(year, month) {
+    try {
+      const res = await fetch(this.apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'syncPnL',
+          year: year,
+          month: month
+        })
+      });
       return await res.json();
     } catch (err) {
-      return { success: false, message: err.message };
+      try {
+        const getUrl = `${this.apiUrl}?action=syncPnL&year=${year}&month=${month}`;
+        const res2 = await fetch(getUrl);
+        return await res2.json();
+      } catch (err2) {
+        return { success: false, message: '連線失敗: ' + err2.message };
+      }
     }
   }
 }

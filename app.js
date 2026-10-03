@@ -74,10 +74,13 @@ class BookkeepingApp {
     const saved = localStorage.getItem('xiangkou_entries');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && !parsed.some(item => item.id === 'd1')) {
+          return parsed;
+        }
       } catch (e) {}
     }
-    return DEMO_ENTRIES;
+    return [];
   }
 
   saveLocalEntries() {
@@ -146,6 +149,7 @@ class BookkeepingApp {
     this.closeSettingsModalBtn = document.getElementById('close-settings-modal');
     this.settingGasUrl = document.getElementById('setting-gas-url');
     this.saveSettingsBtn = document.getElementById('save-settings-btn');
+    this.syncPnlBtn = document.getElementById('sync-pnl-btn');
 
     // Toast
     this.toast = document.getElementById('toast-msg');
@@ -220,6 +224,24 @@ class BookkeepingApp {
       this.showToast('✅ API 網址已儲存，正在同步…');
       this.syncFromBackend();
     });
+
+    // 同步當月損益表
+    if (this.syncPnlBtn) {
+      this.syncPnlBtn.addEventListener('click', async () => {
+        const y = this.currentYear;
+        const m = this.currentMonth;
+        if (!confirm(`確定要將【${y}年${m}月】的記帳加總同步寫入「損益表」Google Sheet 嗎？`)) {
+          return;
+        }
+        this.showToast(`📈 正在同步 ${y}年${m}月 損益表…`);
+        const res = await api.syncPnL(y, m);
+        if (res && res.success) {
+          alert('📈 損益表同步成功！\n\n' + (res.message || ''));
+        } else {
+          alert('同步提示: ' + (res.message || '連線逾時'));
+        }
+      });
+    }
 
     // 點擊 Modal 背景關閉
     [this.addModal, this.accountsModal, this.settingsModal].forEach(modal => {

@@ -7,8 +7,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#000000">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <link rel="apple-touch-icon" href="https://img.icons8.com/color/192/noodle.png">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20261003_v3">
 </head>
 <body>
 
@@ -37,7 +40,7 @@
   <section class="month-selector">
     <button class="month-nav-arrow" id="prev-month-btn">〈</button>
     <div class="current-month-title" id="month-picker-trigger">
-      <span id="month-display">2026年9月</span>
+      <span id="month-display">載入中…</span>
       <span class="dropdown-icon">▼</span>
     </div>
     <button class="month-nav-arrow" id="next-month-btn">〉</button>
@@ -198,7 +201,8 @@
           在此填入您 Google Apps Script 部署的網址，網頁將會自動與 Google 試算表同步。
         </p>
       </div>
-      <button type="button" class="submit-btn" id="save-settings-btn" style="background:#2c2c2e; margin-bottom:12px;">儲存設定並同步</button>
+      <button type="button" class="submit-btn" id="save-settings-btn" style="background:#2c2c2e; margin-bottom:10px;">儲存設定並同步</button>
+      <button type="button" class="submit-btn" id="sync-pnl-btn" style="background:#0a84ff; margin-bottom:12px;">📈 同步當前月份損益表</button>
       
       <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border-subtle);">
         <p style="font-size:13px; color:var(--text-secondary); margin-bottom:8px;">快速捷徑：</p>
@@ -216,8 +220,8 @@
   <div class="toast-msg" id="toast-msg"></div>
 </div>
 
-<script src="icons.js"></script>
-<script src="api.js"></script>
-<script src="app.js"></script>
+<script src="icons.js?v=20261003_v3"></script>
+<script src="api.js?v=20261003_v3"></script>
+<script src="app.js?v=20261003_v3"></script>
 </body>
 </html>

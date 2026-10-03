@@ -250,6 +250,14 @@ function handleApiGet_(params) {
     }
   }
 
+  if (action === 'syncPnL') {
+    const year = Number(params.year);
+    const month = Number(params.month);
+    const resText = syncPnLForMonth_(year, month);
+    return ContentService.createTextOutput(JSON.stringify({ success: true, message: resText }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Unknown action' }))
     .setMimeType(ContentService.MimeType.JSON);
 }
@@ -281,6 +289,14 @@ function handleApiPost_(body) {
 
   if (action === 'markReimbursed') {
     const resText = markReimbursed_(body.personName);
+    return ContentService.createTextOutput(JSON.stringify({ success: true, message: resText }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (action === 'syncPnL') {
+    const year = Number(body.year);
+    const month = Number(body.month);
+    const resText = syncPnLForMonth_(year, month);
     return ContentService.createTextOutput(JSON.stringify({ success: true, message: resText }))
       .setMimeType(ContentService.MimeType.JSON);
   }
@@ -328,8 +344,30 @@ function handleTextMessage_(event) {
     return;
   }
 
-  if (text === '同步損益表' || text === '同步') {
-    const result = syncPnLThisMonth_();
+  if (text.indexOf('同步') === 0) {
+    const remain = text.replace(/^同步(損益表)?\s*/, '').trim();
+    if (!remain) {
+      const result = syncPnLThisMonth_();
+      replyToLine_(replyToken, result);
+      return;
+    }
+
+    const now = new Date();
+    let targetYear = now.getFullYear();
+    let targetMonth = now.getMonth() + 1;
+
+    const ymMatch = remain.match(/(\d{4})[年\/\-.](\d{1,2})/);
+    if (ymMatch) {
+      targetYear = Number(ymMatch[1]);
+      targetMonth = Number(ymMatch[2]);
+    } else {
+      const mMatch = remain.match(/(\d{1,2})月?/);
+      if (mMatch) {
+        targetMonth = Number(mMatch[1]);
+      }
+    }
+
+    const result = syncPnLForMonth_(targetYear, targetMonth);
     replyToLine_(replyToken, result);
     return;
   }
