@@ -227,10 +227,12 @@ class BookkeepingApp {
     this.typeBtnExpense.addEventListener('click', () => {
       this.typeBtnExpense.classList.add('active', 'expense');
       this.typeBtnIncome.classList.remove('active', 'income');
+      this.renderCategorySelect('支出');
     });
     this.typeBtnIncome.addEventListener('click', () => {
       this.typeBtnIncome.classList.add('active', 'income');
       this.typeBtnExpense.classList.remove('active', 'expense');
+      this.renderCategorySelect('收入');
     });
 
     // 表單送出
@@ -275,18 +277,51 @@ class BookkeepingApp {
 
   // 初始化分類清單
   initFormOptions() {
+    this.renderCategorySelect('支出');
+  }
+
+  // 根據收支性質動態渲染分類選單
+  renderCategorySelect(currentType = '支出') {
     this.entryCategorySelect.innerHTML = '';
-    Object.keys(CATEGORIES_CONFIG).forEach(section => {
-      const group = document.createElement('optgroup');
-      group.label = section;
-      CATEGORIES_CONFIG[section].forEach(cat => {
-        const opt = document.createElement('option');
-        opt.value = cat;
-        opt.textContent = `${getCategoryIcon(cat)} ${cat}`;
-        group.appendChild(opt);
+
+    if (currentType === '收入') {
+      const incomeSections = {
+        '營收 (銷售額)': ['現金', '吳柏毅', 'LINE PAY', '其他支付'],
+        '房屋 (租金收入)': ['租金'],
+        '其他收入': ['其他']
+      };
+      Object.keys(incomeSections).forEach(section => {
+        const group = document.createElement('optgroup');
+        group.label = section;
+        incomeSections[section].forEach(cat => {
+          const opt = document.createElement('option');
+          opt.value = cat;
+          opt.textContent = `${getCategoryIcon(cat)} ${cat}`;
+          group.appendChild(opt);
+        });
+        this.entryCategorySelect.appendChild(group);
       });
-      this.entryCategorySelect.appendChild(group);
-    });
+    } else {
+      // 支出
+      const expenseSections = {
+        '銷售成本': CATEGORIES_CONFIG['銷售成本'],
+        '營業支出': CATEGORIES_CONFIG['營業支出'],
+        '房屋 (房貸支出)': ['118房貸', '116房貸', '潭子房貸'],
+        '生活支出': CATEGORIES_CONFIG['生活支出'],
+        '其他支出': ['其他']
+      };
+      Object.keys(expenseSections).forEach(section => {
+        const group = document.createElement('optgroup');
+        group.label = section;
+        expenseSections[section].forEach(cat => {
+          const opt = document.createElement('option');
+          opt.value = cat;
+          opt.textContent = `${getCategoryIcon(cat)} ${cat}`;
+          group.appendChild(opt);
+        });
+        this.entryCategorySelect.appendChild(group);
+      });
+    }
   }
 
   // 切換月份
@@ -616,10 +651,18 @@ class BookkeepingApp {
 
     // 找出所屬 section
     let section = '生活支出';
-    for (const sec in CATEGORIES_CONFIG) {
-      if (CATEGORIES_CONFIG[sec].includes(category)) {
-        section = sec;
-        break;
+    if (isIncome) {
+      if (category === '租金') {
+        section = '房屋';
+      } else {
+        section = '營收 (銷售額)';
+      }
+    } else {
+      for (const sec in CATEGORIES_CONFIG) {
+        if (CATEGORIES_CONFIG[sec].includes(category)) {
+          section = sec;
+          break;
+        }
       }
     }
 
