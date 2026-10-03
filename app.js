@@ -16,7 +16,7 @@ const CATEGORIES_CONFIG = {
   ],
   '房屋': ['租金', '118房貸', '116房貸', '潭子房貸'],
   '生活支出': [
-    '好市多', '飲食', '汽車', '機車', '生活雜支', '旅遊', '貓',
+    '飲食', '生活雜支', '好市多', '貓', '機車', '汽車', '旅遊',
     '天然氣', '串流平台', '電費'
   ]
 };
@@ -302,12 +302,12 @@ class BookkeepingApp {
         this.entryCategorySelect.appendChild(group);
       });
     } else {
-      // 支出
+      // 支出 (生活支出與飲食在最上面)
       const expenseSections = {
+        '生活支出': CATEGORIES_CONFIG['生活支出'],
         '銷售成本': CATEGORIES_CONFIG['銷售成本'],
         '營業支出': CATEGORIES_CONFIG['營業支出'],
         '房屋 (房貸支出)': ['118房貸', '116房貸', '潭子房貸'],
-        '生活支出': CATEGORIES_CONFIG['生活支出'],
         '其他支出': ['其他']
       };
       Object.keys(expenseSections).forEach(section => {
