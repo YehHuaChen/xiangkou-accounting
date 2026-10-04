@@ -267,16 +267,18 @@ body {
 }
 
 .dot {
-  width: 4px;
-  height: 4px;
+  width: 4.5px;
+  height: 4.5px;
   border-radius: 50%;
   background-color: var(--accent-green);
 }
 .dot.income {
-  background-color: var(--accent-green);
+  background-color: #34c759; /* 綠點表示收入 */
+  box-shadow: 0 0 4px rgba(52, 199, 89, 0.4);
 }
 .dot.expense {
-  background-color: var(--accent-green);
+  background-color: #ff3b30; /* 紅點表示支出 */
+  box-shadow: 0 0 4px rgba(255, 59, 48, 0.4);
 }
 .dot.multiple {
   background-color: #64d2ff;

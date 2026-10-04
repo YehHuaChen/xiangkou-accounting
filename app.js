@@ -386,11 +386,18 @@ class BookkeepingApp {
     // 上個月天數
     const daysInPrevMonth = new Date(year, month - 1, 0).getDate();
 
-    // 彙整當月有記帳的日期與次數
-    const entriesMap = {};
+    // 彙整當月有記帳的日期與收支類型 (綠點表示收入，紅點表示支出)
+    const dayStats = {};
     this.entries.forEach(item => {
       if (item.date && item.date.startsWith(`${year}-${String(month).padStart(2, '0')}`)) {
-        entriesMap[item.date] = (entriesMap[item.date] || 0) + 1;
+        if (!dayStats[item.date]) {
+          dayStats[item.date] = { hasExpense: false, hasIncome: false };
+        }
+        if (item.type === '收入') {
+          dayStats[item.date].hasIncome = true;
+        } else {
+          dayStats[item.date].hasExpense = true;
+        }
       }
     });
 
@@ -417,14 +424,15 @@ class BookkeepingApp {
       if (dateStr === this.selectedDate) cell.classList.add('selected');
       if (dateStr === nowStr) cell.classList.add('is-today');
 
-      // 檢查此日是否有記帳 (畫綠點)
-      const count = entriesMap[dateStr] || 0;
+      // 檢查此日是否有記帳 (綠點表示收入，紅點表示支出)
+      const stat = dayStats[dateStr];
       let dotsHtml = '';
-      if (count > 0) {
-        if (count >= 2) {
-          dotsHtml = '<span class="dot"></span><span class="dot"></span>';
-        } else {
-          dotsHtml = '<span class="dot"></span>';
+      if (stat) {
+        if (stat.hasIncome) {
+          dotsHtml += '<span class="dot income" title="收入"></span>';
+        }
+        if (stat.hasExpense) {
+          dotsHtml += '<span class="dot expense" title="支出"></span>';
         }
       }
 
@@ -469,12 +477,18 @@ class BookkeepingApp {
       else dayExpense += amt;
     });
 
-    this.summaryTypeLabel.textContent = '支出';
-    this.summaryAmount.textContent = dayExpense.toLocaleString();
+    if (dayIncome > 0 && dayExpense === 0) {
+      this.summaryTypeLabel.textContent = '收入';
+      this.summaryAmount.textContent = dayIncome.toLocaleString();
+    } else {
+      this.summaryTypeLabel.textContent = '支出';
+      this.summaryAmount.textContent = dayExpense.toLocaleString();
+    }
 
     // 點擊日期的文字提示 (例如: 9月3日)
     const dateParts = this.selectedDate.split('-');
-    this.summaryDetails.textContent = `${Number(dateParts[1])}月${Number(dateParts[2])}日 (${dayEntries.length}筆)`;
+    const extraIncomeText = (dayIncome > 0 && dayExpense > 0) ? ` · 收入 $${dayIncome.toLocaleString()}` : '';
+    this.summaryDetails.textContent = `${Number(dateParts[1])}月${Number(dateParts[2])}日 (${dayEntries.length}筆${extraIncomeText})`;
 
     if (dayEntries.length === 0) {
       this.transactionsList.innerHTML = `
