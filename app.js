@@ -65,8 +65,8 @@ class BookkeepingApp {
     this.initFormOptions();
     this.render();
     
-    // 啟動時自動嘗試從 Google Sheet 後端拉取最新資料
-    this.syncFromBackend();
+    // 啟動時預設只從 Google Sheet 拉取當前月份的最新資料 (秒開不卡頓)
+    this.syncFromBackend(this.currentYear, this.currentMonth);
   }
 
   // 讀取本地快取資料
@@ -183,11 +183,16 @@ class BookkeepingApp {
     // 回到今天按鈕
     this.todayBtn.addEventListener('click', () => {
       const now = new Date();
+      const prevY = this.currentYear;
+      const prevM = this.currentMonth;
       this.currentYear = now.getFullYear();
       this.currentMonth = now.getMonth() + 1;
       this.selectedDate = this.formatDate(now);
       this.render();
       this.showToast('📅 已回到今天');
+      if (prevY !== this.currentYear || prevM !== this.currentMonth) {
+        this.syncFromBackend(this.currentYear, this.currentMonth);
+      }
     });
 
     // 月份切換
@@ -338,7 +343,7 @@ class BookkeepingApp {
     // 將選取日期切換至該月第一天
     this.selectedDate = `${this.currentYear}-${String(this.currentMonth).padStart(2, '0')}-01`;
     this.render();
-    this.syncFromBackend();
+    this.syncFromBackend(this.currentYear, this.currentMonth);
   }
 
   // 切換視圖 (行事曆 vs 清單)
@@ -711,7 +716,8 @@ class BookkeepingApp {
       const res = await api.addEntry(payload);
       if (res && res.success) {
         console.log('同步至 Google Sheet 成功:', res);
-        this.syncFromBackend();
+        const [entryY, entryM] = date.split('-').map(Number);
+        this.syncFromBackend(entryY, entryM);
       } else if (res && !res.success) {
         console.warn('雲端寫入提示:', res.message);
       }
@@ -735,7 +741,23 @@ class BookkeepingApp {
   // 打開帳戶與代墊結算 Modal
   async openAccountsModal() {
     this.accountsModal.classList.add('active');
-    this.unreimbursedListContent.innerHTML = '<p style="text-align:center; padding:20px; color:#8e8e93;">計算中…</p>';
+    this.unreimbursedListContent.innerHTML = '<p style="text-align:center; padding:20px; color:#8e8e93;">讀取最新未結算紀錄中…</p>';
+
+    // 查看對帳時，拉取全部資料以確保跨月份代墊款項不遺漏
+    try {
+      const res = await api.getEntries();
+      if (res && res.success && Array.isArray(res.entries)) {
+        res.entries.forEach(item => {
+          const idx = this.entries.findIndex(e => e.id === item.id);
+          if (idx !== -1) {
+            this.entries[idx] = item;
+          } else {
+            this.entries.push(item);
+          }
+        });
+        this.saveLocalEntries();
+      }
+    } catch (err) {}
 
     // 計算各帳戶未還款代墊加總 (支出為代墊，收入為代收扣除)
     const totals = {};
@@ -941,15 +963,20 @@ class BookkeepingApp {
     this.settingsModal.classList.remove('active');
   }
 
-  // 從 Google Sheet 後端同步最新資料
-  async syncFromBackend() {
-    const res = await api.getEntries();
+  // 從 Google Sheet 後端同步指定月份的資料 (打開網頁只讀取當月，換月才讀取該月)
+  async syncFromBackend(year = this.currentYear, month = this.currentMonth) {
+    const res = await api.getEntries(year, month);
     if (res && res.success && Array.isArray(res.entries)) {
-      console.log('從 Google Sheet 同步到新資料:', res.entries.length, '筆');
-      this.entries = res.entries;
+      const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
+      console.log(`從 Google Sheet 同步 ${year}年${month}月 資料:`, res.entries.length, '筆');
+      
+      // 保留其他月份的既有資料，僅替換該月份的最新記錄
+      this.entries = this.entries.filter(e => !(e.date && e.date.startsWith(monthPrefix)));
+      this.entries.push(...res.entries);
+      
       this.saveLocalEntries();
       this.render();
-      this.showToast(`☁️ 已與 Google 試算表同步 (${res.entries.length} 筆)`);
+      this.showToast(`☁️ 已同步 ${year}年${month}月 (${res.entries.length} 筆)`);
     }
   }
 
