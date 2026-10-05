@@ -151,6 +151,12 @@ class BookkeepingApp {
     this.saveSettingsBtn = document.getElementById('save-settings-btn');
     this.syncPnlBtn = document.getElementById('sync-pnl-btn');
 
+    // 損益分析視窗
+    this.pnlModal = document.getElementById('pnl-modal');
+    this.closePnlModalBtn = document.getElementById('close-pnl-modal');
+    this.pnlModalTitle = document.getElementById('pnl-modal-title');
+    this.pnlModalContent = document.getElementById('pnl-modal-content');
+
     // 記帳人身分
     this.operatorName = localStorage.getItem('xiangkou_operator') || '小花';
     this.currentOperatorLabel = document.getElementById('current-operator-label');
@@ -212,8 +218,9 @@ class BookkeepingApp {
     this.closeAccountsModalBtn.addEventListener('click', () => this.closeAccountsModal());
 
     this.navCharts.addEventListener('click', () => {
-      this.showToast('📊 本月總支出: $' + this.getMonthTotalExpense().toLocaleString());
+      this.openPnlModal();
     });
+    this.closePnlModalBtn.addEventListener('click', () => this.closePnlModal());
 
     this.navSettings.addEventListener('click', () => this.openSettingsModal());
     this.closeSettingsModalBtn.addEventListener('click', () => this.closeSettingsModal());
@@ -271,7 +278,7 @@ class BookkeepingApp {
     }
 
     // 點擊 Modal 背景關閉
-    [this.addModal, this.accountsModal, this.settingsModal].forEach(modal => {
+    [this.addModal, this.accountsModal, this.settingsModal, this.pnlModal].forEach(modal => {
       modal.addEventListener('click', (e) => {
         if (e.target === modal) {
           modal.classList.remove('active');
@@ -961,6 +968,239 @@ class BookkeepingApp {
 
   closeSettingsModal() {
     this.settingsModal.classList.remove('active');
+  }
+
+  // 損益與營運分析 Modal
+  openPnlModal() {
+    this.pnlModal.classList.add('active');
+    this.pnlModalTitle.textContent = `📈 ${this.currentYear}年${this.currentMonth}月 損益與營運分析`;
+    this.renderPnlModal();
+  }
+
+  closePnlModal() {
+    this.pnlModal.classList.remove('active');
+  }
+
+  async syncCurrentMonthPnL() {
+    const y = this.currentYear;
+    const m = this.currentMonth;
+    if (!confirm(`確定要將【${y}年${m}月】的記帳加總同步寫入「損益表」Google Sheet 嗎？`)) {
+      return;
+    }
+    this.showToast(`📈 正在同步 ${y}年${m}月 損益表…`);
+    const res = await api.syncPnL(y, m);
+    if (res && res.success) {
+      alert(`📈 ${y}年${m}月 損益表同步成功！\n\n` + (res.message || ''));
+    } else {
+      alert('同步提示: ' + (res.message || '連線逾時'));
+    }
+  }
+
+  renderPnlModal() {
+    const monthPrefix = `${this.currentYear}-${String(this.currentMonth).padStart(2, '0')}`;
+    const monthEntries = this.entries.filter(e => e.date && e.date.startsWith(monthPrefix));
+
+    // 各大項計算
+    let totalRevenue = 0;
+    let revCash = 0;
+    let revUber = 0;
+    let revLinePay = 0;
+    let revOther = 0;
+
+    let foodCost = 0;
+    const foodItems = {};
+
+    let opExpense = 0;
+    let houseIncome = 0;
+    let mortgageExpense = 0;
+    let lifeExpense = 0;
+
+    monthEntries.forEach(item => {
+      const amt = Number(item.amount) || 0;
+      const isIncome = (item.type === '收入');
+      const cat = (item.category || '').trim();
+      const sec = (item.section || '').trim();
+
+      if (isIncome) {
+        if (sec.includes('房屋') || cat.includes('租金')) {
+          houseIncome += amt;
+        } else {
+          totalRevenue += amt;
+          if (cat.includes('現金') || cat.includes('收入')) revCash += amt;
+          else if (cat.includes('吳') || cat.includes('Uber')) revUber += amt;
+          else if (cat.includes('Line') || cat.includes('LINE')) revLinePay += amt;
+          else revOther += amt;
+        }
+      } else {
+        // 支出
+        if (sec === '銷售成本') {
+          foodCost += amt;
+          foodItems[cat] = (foodItems[cat] || 0) + amt;
+        } else if (sec === '營業支出') {
+          opExpense += amt;
+        } else if (sec === '房屋' || cat.includes('房貸') || cat.includes('116') || cat.includes('118') || cat.includes('潭子')) {
+          mortgageExpense += amt;
+        } else {
+          // 生活支出與其他
+          lifeExpense += amt;
+        }
+      }
+    });
+
+    // 核心指標
+    const grossProfit = totalRevenue - foodCost;
+    const foodCostRate = totalRevenue > 0 ? ((foodCost / totalRevenue) * 100).toFixed(1) : '0.0';
+    const grossMarginRate = totalRevenue > 0 ? ((grossProfit / totalRevenue) * 100).toFixed(1) : '0.0';
+    const operatingProfit = grossProfit - opExpense; // 麵店本業營業淨利
+    const opProfitRate = totalRevenue > 0 ? ((operatingProfit / totalRevenue) * 100).toFixed(1) : '0.0';
+
+    // 家庭與個人實質淨現金流
+    const netCashFlow = operatingProfit + houseIncome - mortgageExpense - lifeExpense;
+
+    // 食材成本率燈號評級 (餐飲標準: 30%~38% 最佳)
+    let foodCostBadge = 'good';
+    let foodCostText = '良好 (正常)';
+    if (Number(foodCostRate) > 42) {
+      foodCostBadge = 'warning';
+      foodCostText = '偏高 (需注意食材成本)';
+    } else if (Number(foodCostRate) === 0) {
+      foodCostText = '無數據';
+    }
+
+    // 前 5 大食材進貨排行
+    const topFoods = Object.entries(foodItems)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    let topFoodsHtml = '';
+    if (topFoods.length > 0) {
+      topFoodsHtml = topFoods.map(([name, val], idx) => `
+        <div class="pnl-item-row">
+          <span>${idx + 1}. ${name}</span>
+          <span style="font-weight:600;">$${val.toLocaleString()}</span>
+        </div>
+      `).join('');
+    } else {
+      topFoodsHtml = '<div style="color:#8e8e93; font-size:12px; padding:4px 0;">本月尚無食材成本記錄</div>';
+    }
+
+    this.pnlModalContent.innerHTML = `
+      <!-- 四大核心 KPI 儀表板 -->
+      <div class="pnl-kpi-grid">
+        <div class="pnl-kpi-card">
+          <div class="pnl-kpi-label">
+            <span>💰 本月總營收</span>
+          </div>
+          <div class="pnl-kpi-val" style="color:#34c759;">$${totalRevenue.toLocaleString()}</div>
+          <div class="pnl-kpi-sub green">營業額加總</div>
+        </div>
+
+        <div class="pnl-kpi-card">
+          <div class="pnl-kpi-label">
+            <span>🥩 食材成本率</span>
+            <span class="pnl-badge-health ${foodCostBadge}">${foodCostRate}%</span>
+          </div>
+          <div class="pnl-kpi-val" style="color:#ff9500;">$${foodCost.toLocaleString()}</div>
+          <div class="pnl-kpi-sub orange">${foodCostText}</div>
+        </div>
+
+        <div class="pnl-kpi-card">
+          <div class="pnl-kpi-label">
+            <span>📈 營業毛利率</span>
+            <span class="pnl-badge-health good">${grossMarginRate}%</span>
+          </div>
+          <div class="pnl-kpi-val" style="color:#0a84ff;">$${grossProfit.toLocaleString()}</div>
+          <div class="pnl-kpi-sub blue">毛利 (營收 - 食材)</div>
+        </div>
+
+        <div class="pnl-kpi-card">
+          <div class="pnl-kpi-label">
+            <span>🏬 麵店營業淨利</span>
+            <span class="pnl-badge-health good">${opProfitRate}%</span>
+          </div>
+          <div class="pnl-kpi-val" style="color:${operatingProfit >= 0 ? '#34c759' : '#ff3b30'};">
+            $${operatingProfit.toLocaleString()}
+          </div>
+          <div class="pnl-kpi-sub ${operatingProfit >= 0 ? 'green' : 'orange'}">本業純利潤</div>
+        </div>
+      </div>
+
+      <!-- 第一層：麵店本業營業損益 -->
+      <div class="pnl-section-card">
+        <div class="pnl-section-title">
+          <span>🍜【第一層：麵店本業營業損益】</span>
+          <span style="font-size:12px; color:#8e8e93;">看店面實質賺多少</span>
+        </div>
+        <div class="pnl-item-row">
+          <span>＋ 營業收入 (店內/外送)</span>
+          <span style="color:#34c759; font-weight:600;">+$${totalRevenue.toLocaleString()}</span>
+        </div>
+        <div class="pnl-item-row">
+          <span>－ 銷售成本 (食材進貨)</span>
+          <span style="color:#ff9500; font-weight:600;">-$${foodCost.toLocaleString()}</span>
+        </div>
+        <div class="pnl-item-row" style="background:rgba(255,255,255,0.02); padding:6px 8px; border-radius:6px;">
+          <span>＝ 營業毛利</span>
+          <span style="font-weight:700; color:#fff;">$${grossProfit.toLocaleString()}</span>
+        </div>
+        <div class="pnl-item-row">
+          <span>－ 營業費用 (瓦斯/房租/水電/雜支)</span>
+          <span style="color:#ff9500; font-weight:600;">-$${opExpense.toLocaleString()}</span>
+        </div>
+        <div class="pnl-item-row bold">
+          <span>👉 麵店本月營業淨利</span>
+          <span style="color:${operatingProfit >= 0 ? '#34c759' : '#ff3b30'}; font-size:16px;">
+            $${operatingProfit.toLocaleString()}
+          </span>
+        </div>
+      </div>
+
+      <!-- 第二層：公私帳分流 (家庭收支與房貸) -->
+      <div class="pnl-section-card">
+        <div class="pnl-section-title">
+          <span>🏠【第二層：家庭收支與總現金流】</span>
+          <span style="font-size:12px; color:#8e8e93;">公私帳分流結算</span>
+        </div>
+        <div class="pnl-item-row">
+          <span>＋ 麵店本業淨利</span>
+          <span style="font-weight:600;">$${operatingProfit.toLocaleString()}</span>
+        </div>
+        <div class="pnl-item-row">
+          <span>＋ 房屋租金收入</span>
+          <span style="color:#34c759; font-weight:600;">+$${houseIncome.toLocaleString()}</span>
+        </div>
+        <div class="pnl-item-row">
+          <span>－ 房貸支出 (116/118/潭子)</span>
+          <span style="color:#ff9500; font-weight:600;">-$${mortgageExpense.toLocaleString()}</span>
+        </div>
+        <div class="pnl-item-row">
+          <span>－ 個人家庭生活支出 (飲食/貓/車/旅)</span>
+          <span style="color:#ff9500; font-weight:600;">-$${lifeExpense.toLocaleString()}</span>
+        </div>
+        <div class="pnl-item-row bold">
+          <span>💰 全家實質淨存現金流</span>
+          <span style="color:${netCashFlow >= 0 ? '#30d158' : '#ff9500'}; font-size:16px;">
+            $${netCashFlow.toLocaleString()}
+          </span>
+        </div>
+      </div>
+
+      <!-- 食材成本前 5 大進貨項目 -->
+      <div class="pnl-section-card">
+        <div class="pnl-section-title">
+          <span>🥩 本月食材成本排行 (Top 5)</span>
+          <span style="font-size:12px; color:#8e8e93;">佔比最多</span>
+        </div>
+        ${topFoodsHtml}
+      </div>
+
+      <!-- 同步按鈕 -->
+      <div style="margin-top:16px; margin-bottom:8px;">
+        <button type="button" class="submit-btn" style="background:#0a84ff; font-weight:600;" onclick="app.syncCurrentMonthPnL()">
+          📈 將本月數字同步寫入「損益表」Google Sheet
+        </button>
+      </div>
+    `;
   }
 
   // 從 Google Sheet 後端同步指定月份的資料 (打開網頁只讀取當月，換月才讀取該月)

@@ -12,7 +12,7 @@
   <meta http-equiv="Expires" content="0">
   <link rel="apple-touch-icon" href="apple-touch-icon.png?v=11">
   <link rel="icon" type="image/png" href="icon-192.png?v=11">
-  <link rel="stylesheet" href="style.css?v=11">
+  <link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
 
@@ -231,12 +231,25 @@
     </div>
   </div>
 
+  <!-- ================= 彈出視窗 4: 損益與營運分析 ================= -->
+  <div class="modal-overlay" id="pnl-modal">
+    <div class="modal-sheet" style="max-height: 92vh;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="pnl-modal-title">📈 損益與營運分析</h3>
+        <button class="modal-close-btn" id="close-pnl-modal">✕</button>
+      </div>
+      <div id="pnl-modal-content">
+        <!-- 動態渲染損益分析卡片 -->
+      </div>
+    </div>
+  </div>
+
   <!-- Toast 提示橫幅 -->
   <div class="toast-msg" id="toast-msg"></div>
 </div>
 
-<script src="icons.js?v=13"></script>
-<script src="api.js?v=13"></script>
-<script src="app.js?v=13"></script>
+<script src="icons.js?v=14"></script>
+<script src="api.js?v=14"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>
