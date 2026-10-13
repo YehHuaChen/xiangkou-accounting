@@ -635,6 +635,13 @@ class BookkeepingApp {
 
   // 打開新增記帳 Modal
   openAddModal() {
+    this.isSubmitting = false;
+    const submitBtn = document.getElementById('submit-record-btn');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = '送出記帳';
+    }
+
     this.entryDate.value = this.selectedDate;
     this.entryAmount.value = '';
     this.entryNote.value = '';
@@ -661,10 +668,19 @@ class BookkeepingApp {
   // 處理新增記帳送出
   async handleFormSubmit(e) {
     e.preventDefault();
+    if (this.isSubmitting) return;
+
     const amount = parseFloat(this.entryAmount.value);
     if (isNaN(amount) || amount === 0) {
       alert('請輸入有效金額（非 0，可為正負數）！');
       return;
+    }
+
+    this.isSubmitting = true;
+    const submitBtn = document.getElementById('submit-record-btn');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = '寫入中…';
     }
 
     const isIncome = this.typeBtnIncome.classList.contains('active');
@@ -730,6 +746,12 @@ class BookkeepingApp {
       }
     } catch (err) {
       console.warn('同步至雲端失敗 (仍保存在手機上):', err);
+    } finally {
+      this.isSubmitting = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '送出記帳';
+      }
     }
   }
 

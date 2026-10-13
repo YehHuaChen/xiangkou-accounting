@@ -42,34 +42,20 @@ class ApiService {
     }
   }
 
-  // 新增記帳紀錄
+  // 新增記帳紀錄 (直接使用 GET action=addEntryGet，避免 GAS POST 302 跨域重定向導致重複寫入)
   async addEntry(payload) {
     if (!this.apiUrl) {
       return { success: false, message: '尚未設定 API 網址' };
     }
 
     try {
-      // 使用 text/plain 避免跨域 OPTIONS preflight
-      const res = await fetch(this.apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'addEntry',
-          payload: payload
-        })
-      });
+      const getUrl = `${this.apiUrl}?action=addEntryGet&payload=${encodeURIComponent(JSON.stringify(payload))}&_t=${Date.now()}`;
+      const res = await fetch(getUrl);
       const data = await res.json();
       return data;
     } catch (err) {
       console.error('API 寫入失敗:', err);
-      // 嘗試以 GET 模式發送做為備援（適用於某些網路環境）
-      try {
-        const getUrl = `${this.apiUrl}?action=addEntryGet&payload=${encodeURIComponent(JSON.stringify(payload))}`;
-        const res2 = await fetch(getUrl);
-        return await res2.json();
-      } catch (err2) {
-        return { success: false, message: '連線失敗: ' + err.message };
-      }
+      return { success: false, message: '連線失敗: ' + err.message };
     }
   }
 
