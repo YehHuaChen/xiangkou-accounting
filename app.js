@@ -130,6 +130,8 @@ class BookkeepingApp {
     this.closeAddModalBtn = document.getElementById('close-add-modal');
     this.recordForm = document.getElementById('record-form');
     this.entryAmount = document.getElementById('entry-amount');
+    this.toggleSignBtn = document.getElementById('toggle-sign-btn');
+    this.amountSignSymbol = document.getElementById('amount-sign-symbol');
     this.entryDate = document.getElementById('entry-date');
     this.entryCategorySelect = document.getElementById('entry-category-select');
     this.entryAccount = document.getElementById('entry-account');
@@ -246,6 +248,14 @@ class BookkeepingApp {
       this.typeBtnExpense.classList.remove('active', 'expense');
       this.renderCategorySelect('收入');
     });
+
+    // 正負數切換按鈕
+    if (this.toggleSignBtn) {
+      this.toggleSignBtn.addEventListener('click', () => this.handleToggleSign());
+    }
+    if (this.entryAmount) {
+      this.entryAmount.addEventListener('input', () => this.syncSignUI());
+    }
 
     // 表單送出
     this.recordForm.addEventListener('submit', (e) => this.handleFormSubmit(e));
@@ -580,12 +590,23 @@ class BookkeepingApp {
 
     const icon = getCategoryIcon(item.category);
     const isIncome = item.type === '收入';
-    const amountPrefix = isIncome ? '+' : '';
-    const amountClass = isIncome ? 'income' : 'expense';
-    const formattedAmount = `${amountPrefix}${Number(item.amount).toLocaleString()}`;
+    const rawAmt = Number(item.amount) || 0;
+    const isNegative = rawAmt < 0;
+
+    let formattedAmount;
+    if (isIncome) {
+      formattedAmount = rawAmt >= 0 ? `+${rawAmt.toLocaleString()}` : `-${Math.abs(rawAmt).toLocaleString()}`;
+    } else {
+      formattedAmount = isNegative ? `-$${Math.abs(rawAmt).toLocaleString()}` : `$${rawAmt.toLocaleString()}`;
+    }
+
+    const amountClass = isIncome ? 'income' : (isNegative ? 'refund' : 'expense');
 
     // 副標題格式 (例如: 巷口麵店 | 角鋼)
-    const subtitle = item.note ? `${item.note}` : '巷口麵店';
+    let subtitle = item.note ? `${item.note}` : '巷口麵店';
+    if (isNegative) {
+      subtitle = subtitle ? `[退款/折讓] ${subtitle}` : '[退款/折讓]';
+    }
 
     let accountBadgeText = item.account || '現金';
     if (item.displayName && item.displayName !== item.account) {
@@ -614,7 +635,7 @@ class BookkeepingApp {
     moreBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (confirm(`確定要刪除這筆「${item.category} $${item.amount}」的紀錄嗎？`)) {
-        this.deleteEntry(item.id);
+        this.deleteEntry(item);
       }
     });
 
@@ -633,9 +654,45 @@ class BookkeepingApp {
     return total;
   }
 
+  // 正負數切換
+  handleToggleSign() {
+    const val = this.entryAmount.value.trim();
+    if (val) {
+      const num = parseFloat(val);
+      if (!isNaN(num)) {
+        this.entryAmount.value = -num;
+        this.isNegativeAmount = (-num < 0);
+      }
+    } else {
+      this.isNegativeAmount = !this.isNegativeAmount;
+    }
+    this.syncSignUI();
+  }
+
+  // 同步正負號 UI 狀態
+  syncSignUI() {
+    const val = parseFloat(this.entryAmount.value);
+    const isNeg = (!isNaN(val) && val < 0) || (isNaN(val) && this.isNegativeAmount);
+    if (this.toggleSignBtn) {
+      if (isNeg) {
+        this.toggleSignBtn.classList.add('negative');
+        this.toggleSignBtn.textContent = '➖ 負數模式 (點此切回正數)';
+      } else {
+        this.toggleSignBtn.classList.remove('negative');
+        this.toggleSignBtn.textContent = '± 正 / 負 切換';
+      }
+    }
+    if (this.amountSignSymbol) {
+      this.amountSignSymbol.textContent = isNeg ? '-$' : '$';
+    }
+  }
+
   // 打開新增記帳 Modal
   openAddModal() {
     this.isSubmitting = false;
+    this.isNegativeAmount = false;
+    this.syncSignUI();
+
     const submitBtn = document.getElementById('submit-record-btn');
     if (submitBtn) {
       submitBtn.disabled = false;
@@ -670,10 +727,15 @@ class BookkeepingApp {
     e.preventDefault();
     if (this.isSubmitting) return;
 
-    const amount = parseFloat(this.entryAmount.value);
+    let amount = parseFloat(this.entryAmount.value);
     if (isNaN(amount) || amount === 0) {
       alert('請輸入有效金額（非 0，可為正負數）！');
       return;
+    }
+
+    // 如果使用者在空欄位時點了負數模式，在此將金額轉為負值
+    if (this.isNegativeAmount && amount > 0) {
+      amount = -amount;
     }
 
     this.isSubmitting = true;
@@ -732,7 +794,8 @@ class BookkeepingApp {
 
     this.closeAddModal();
     this.render();
-    this.showToast(`✅ 已記錄 ${category} $${amount}`);
+    const signPrompt = amount < 0 ? `-$${Math.abs(amount)} (負數/折讓)` : `$${amount}`;
+    this.showToast(`✅ 已記錄 ${category} ${signPrompt}`);
 
     // 後台異步同步至 Google Sheet
     try {
@@ -755,16 +818,45 @@ class BookkeepingApp {
     }
   }
 
-  // 刪除紀錄
-  async deleteEntry(id) {
-    this.entries = this.entries.filter(e => e.id !== id);
+  // 刪除紀錄 (支援傳入完整 item 避免列號位移與 local_ID 查無問題)
+  async deleteEntry(itemOrId) {
+    let itemToDelete = null;
+    let targetId = '';
+    if (typeof itemOrId === 'object' && itemOrId !== null) {
+      itemToDelete = itemOrId;
+      targetId = itemOrId.id;
+    } else {
+      targetId = itemOrId;
+      itemToDelete = this.entries.find(e => e.id === targetId);
+    }
+
+    this.entries = this.entries.filter(e => e.id !== targetId);
     this.saveLocalEntries();
     this.render();
-    this.showToast('🗑️ 已刪除該筆紀錄');
+    const catLabel = itemToDelete ? `${itemToDelete.category} $${itemToDelete.amount}` : '該筆紀錄';
+    this.showToast(`🗑️ 已刪除 ${catLabel}`);
 
     try {
-      await api.deleteEntry(id);
-    } catch (err) {}
+      const payload = itemToDelete ? {
+        id: itemToDelete.id,
+        rowId: itemToDelete.id,
+        date: itemToDelete.date,
+        category: itemToDelete.category,
+        amount: itemToDelete.amount,
+        account: itemToDelete.account,
+        type: itemToDelete.type,
+        note: itemToDelete.note
+      } : { rowId: targetId };
+
+      const res = await api.deleteEntry(payload);
+      if (res && res.success) {
+        console.log('雲端刪除成功:', res);
+      } else {
+        console.warn('雲端刪除提示:', res ? res.message : '無回應');
+      }
+    } catch (err) {
+      console.warn('雲端刪除失敗:', err);
+    }
   }
 
   // 打開帳戶與代墊結算 Modal
@@ -851,17 +943,20 @@ class BookkeepingApp {
         if (!label) {
           label = (item.category || item.section || '款項').trim();
         }
-        const amt = Math.abs(Number(item.amount) || 0);
+        const rawAmt = Number(item.amount) || 0;
         const isIncome = (item.type === '收入');
+        const effectiveAmt = isIncome ? -rawAmt : rawAmt;
+        const sign = effectiveAmt >= 0 ? '+' : '-';
+        const absAmt = Math.abs(rawAmt);
 
         formulaParts.push({
-          sign: isIncome ? '-' : '+',
-          label: label,
-          amt: amt
+          sign: sign,
+          label: label + (rawAmt < 0 ? '(折退)' : ''),
+          amt: absAmt
         });
 
-        const amtFormatted = isIncome ? `-$${amt.toLocaleString()}` : `+$${amt.toLocaleString()}`;
-        const amtClass = isIncome ? 'minus' : 'plus';
+        const amtFormatted = (effectiveAmt < 0 ? '-' : '+') + '$' + absAmt.toLocaleString();
+        const amtClass = (effectiveAmt < 0) ? 'minus' : 'plus';
         const dateRaw = (item.date || '').slice(5);
         const dateDisplay = dateRaw ? dateRaw.replace('-', '/') : '';
         const whoBadge = (item.displayName || item.operator) ? `<span class="reimburse-who">✍️ ${item.displayName || item.operator}</span>` : '';

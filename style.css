@@ -605,6 +605,28 @@ body {
   margin-bottom: 6px;
 }
 
+.sign-toggle-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  color: #8e8e93;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+.sign-toggle-btn:active {
+  background: rgba(255, 255, 255, 0.2);
+}
+.sign-toggle-btn.negative {
+  background: rgba(255, 69, 58, 0.18);
+  border-color: #ff453a;
+  color: #ff453a;
+  font-weight: 700;
+}
+
 .form-input, .form-select {
   width: 100%;
   background-color: var(--bg-surface);

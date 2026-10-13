@@ -59,19 +59,25 @@ class ApiService {
     }
   }
 
-  // 刪除記帳紀錄
-  async deleteEntry(rowId) {
+  // 刪除記帳紀錄 (支援 GET deleteEntryGet 與完整特徵參數)
+  async deleteEntry(itemOrRowId) {
+    if (!this.apiUrl) {
+      return { success: false, message: '尚未設定 API 網址' };
+    }
+
     try {
-      const res = await fetch(this.apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'deleteEntry',
-          rowId: rowId
-        })
-      });
-      return await res.json();
+      let payload = {};
+      if (typeof itemOrRowId === 'object' && itemOrRowId !== null) {
+        payload = itemOrRowId;
+      } else {
+        payload = { rowId: itemOrRowId };
+      }
+      const url = `${this.apiUrl}?action=deleteEntryGet&payload=${encodeURIComponent(JSON.stringify(payload))}&_t=${Date.now()}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      return data;
     } catch (err) {
+      console.error('刪除 API 呼叫失敗:', err);
       return { success: false, message: err.message };
     }
   }

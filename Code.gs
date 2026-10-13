@@ -260,6 +260,18 @@ function handleApiGet_(params) {
     }
   }
 
+  if (action === 'deleteEntryGet' || action === 'deleteEntry') {
+    try {
+      const payload = params.payload ? JSON.parse(params.payload) : params;
+      const res = deleteEntryRecord_(payload);
+      return ContentService.createTextOutput(JSON.stringify(res))
+        .setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: String(err) }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
   if (action === 'syncPnL') {
     const year = Number(params.year);
     const month = Number(params.month);
@@ -283,17 +295,8 @@ function handleApiPost_(body) {
   }
 
   if (action === 'deleteEntry') {
-    const rowId = body.rowId;
-    if (rowId && typeof rowId === 'string' && rowId.indexOf('row_') === 0) {
-      const rowNum = parseInt(rowId.replace('row_', ''), 10);
-      const sheet = getRecordSheet_();
-      if (rowNum >= 2 && rowNum <= sheet.getLastRow()) {
-        sheet.deleteRow(rowNum);
-        return ContentService.createTextOutput(JSON.stringify({ success: true, message: '已刪除' }))
-          .setMimeType(ContentService.MimeType.JSON);
-      }
-    }
-    return ContentService.createTextOutput(JSON.stringify({ success: false, message: '找不到該筆紀錄' }))
+    const res = deleteEntryRecord_(body.payload || body);
+    return ContentService.createTextOutput(JSON.stringify(res))
       .setMimeType(ContentService.MimeType.JSON);
   }
 
@@ -509,7 +512,7 @@ function submitEntryFromForm(payload) {
     section: section,
     category: category,
     account: account,
-    amountLabel: sign + amount,
+    amountLabel: (amount < 0 ? '' : sign) + amount,
     note: note
   };
 
@@ -591,6 +594,82 @@ function deleteLastEntry_(userId) {
     }
   }
   return '沒有找到你的記錄可以刪除喔';
+}
+
+// ------------------------------------------------
+// 刪除指定記帳紀錄 (支援 rowId 直接刪除 + 特徵防呆反向搜尋)
+// ------------------------------------------------
+
+function deleteEntryRecord_(payload) {
+  if (!payload) {
+    return { success: false, message: '缺少刪除資料' };
+  }
+
+  const sheet = getRecordSheet_();
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) {
+    return { success: false, message: '記帳本目前無資料' };
+  }
+
+  const rowId = typeof payload === 'string' ? payload : (payload.rowId || payload.id);
+  const targetCategory = payload.category ? String(payload.category).trim() : null;
+  const targetAmount = (payload.amount !== undefined && payload.amount !== null && payload.amount !== '') ? Number(payload.amount) : null;
+  const targetDate = payload.date ? String(payload.date).trim() : null;
+  const targetAccount = payload.account ? String(payload.account).trim().toLowerCase() : null;
+
+  // 策略 1: 如果有 rowId (例如 row_1925)，先確認該列特徵是否吻合
+  if (rowId && typeof rowId === 'string' && rowId.indexOf('row_') === 0) {
+    const rowNum = parseInt(rowId.replace('row_', ''), 10);
+    if (rowNum >= 2 && rowNum <= data.length) {
+      const rowData = data[rowNum - 1];
+      let match = true;
+      if (targetCategory && String(rowData[5] || '').trim() !== targetCategory) match = false;
+      if (targetAmount !== null && Number(rowData[7]) !== targetAmount) match = false;
+      if (targetAccount && String(rowData[6] || '').trim().toLowerCase() !== targetAccount) match = false;
+
+      if (match) {
+        sheet.deleteRow(rowNum);
+        return { success: true, message: '已成功刪除該筆紀錄', deletedRowNum: rowNum };
+      }
+    }
+  }
+
+  // 策略 2: 若 rowId 未命中或為 local_ID 或列號位移，從最新列往回搜尋特徵符合的紀錄
+  if (targetCategory || targetAmount !== null || targetDate) {
+    for (let r = data.length - 1; r >= 1; r--) {
+      const row = data[r];
+      const timestamp = row[0];
+      const rowDateStr = (timestamp instanceof Date) 
+        ? Utilities.formatDate(timestamp, Session.getScriptTimeZone(), 'yyyy-MM-dd') 
+        : String(timestamp || '').slice(0, 10);
+
+      const rowCategory = String(row[5] || '').trim();
+      const rowAccount = String(row[6] || '').trim().toLowerCase();
+      const rowAmount = Number(row[7]);
+
+      let match = true;
+      if (targetCategory && rowCategory !== targetCategory) match = false;
+      if (targetAmount !== null && rowAmount !== targetAmount) match = false;
+      if (targetDate && rowDateStr !== targetDate) match = false;
+      if (targetAccount && rowAccount !== targetAccount) match = false;
+
+      if (match) {
+        sheet.deleteRow(r + 1);
+        return { success: true, message: '已依特徵匹配成功刪除', deletedRowNum: r + 1 };
+      }
+    }
+  }
+
+  // 策略 3: 保底直接刪除 row_XXX
+  if (rowId && typeof rowId === 'string' && rowId.indexOf('row_') === 0) {
+    const rowNum = parseInt(rowId.replace('row_', ''), 10);
+    if (rowNum >= 2 && rowNum <= sheet.getLastRow()) {
+      sheet.deleteRow(rowNum);
+      return { success: true, message: '已刪除指定列', deletedRowNum: rowNum };
+    }
+  }
+
+  return { success: false, message: '找不到符合條件的紀錄' };
 }
 
 // ------------------------------------------------

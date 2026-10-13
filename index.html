@@ -123,11 +123,14 @@
           <button type="button" class="type-pill income" id="type-btn-income">收入</button>
         </div>
 
-        <!-- 金額輸入 (支援正負數) -->
+        <!-- 金額輸入 (支援正負數與一鍵切換) -->
         <div class="form-group">
-          <label class="form-label">金額</label>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <label class="form-label" style="margin-bottom:0;">金額</label>
+            <button type="button" class="sign-toggle-btn" id="toggle-sign-btn">± 正 / 負 切換</button>
+          </div>
           <div class="amount-input-box">
-            <span class="currency">$</span>
+            <span class="currency" id="amount-sign-symbol">$</span>
             <input type="number" id="entry-amount" inputmode="decimal" placeholder="0" required step="any" autofocus>
           </div>
         </div>
@@ -248,8 +251,8 @@
   <div class="toast-msg" id="toast-msg"></div>
 </div>
 
-<script src="icons.js?v=15"></script>
-<script src="api.js?v=15"></script>
-<script src="app.js?v=15"></script>
+<script src="icons.js?v=16"></script>
+<script src="api.js?v=16"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>
