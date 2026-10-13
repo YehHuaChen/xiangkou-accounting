@@ -83,6 +83,12 @@ class BookkeepingApp {
   // 初始化已刪除項目的墓碑快取 (防止雲端延遲導致刪除的資料復活)
   initDeletedTombstones() {
     try {
+      // 升級至 v=18，重置舊版有問題的模糊墓碑快取，確保現有資料正常顯示
+      const v = localStorage.getItem('xiangkou_tombstone_version');
+      if (v !== 'v18') {
+        localStorage.removeItem('xiangkou_deleted_items');
+        localStorage.setItem('xiangkou_tombstone_version', 'v18');
+      }
       const raw = localStorage.getItem('xiangkou_deleted_items');
       this.deletedItems = raw ? JSON.parse(raw) : [];
       const fifteenMinsAgo = Date.now() - 15 * 60 * 1000;
@@ -103,6 +109,7 @@ class BookkeepingApp {
     if (!item) return;
     const entry = {
       id: item.id || '',
+      rowId: item.rowId || '',
       date: item.date || '',
       category: item.category || '',
       amount: Number(item.amount) || 0,
@@ -115,13 +122,10 @@ class BookkeepingApp {
 
   isItemDeleted(item) {
     if (!item || !Array.isArray(this.deletedItems)) return false;
-    return this.deletedItems.some(d => {
-      if (item.id && d.id && item.id === d.id) return true;
-      if (item.date === d.date && item.category === d.category && Number(item.amount) === d.amount && (item.account || '').trim().toLowerCase() === d.account) {
-        return true;
-      }
-      return false;
-    });
+    if (item.id) {
+      return this.deletedItems.some(d => d.id && d.id === item.id);
+    }
+    return false;
   }
 
   // 讀取本地快取資料
@@ -826,7 +830,7 @@ class BookkeepingApp {
     }
 
     const payload = {
-      id: 'local_' + Date.now(),
+      id: 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
       date: date,
       type: isIncome ? '收入' : '支出',
       section: section,
@@ -835,7 +839,8 @@ class BookkeepingApp {
       amount: amount,
       note: note,
       userId: 'web_' + encodeURIComponent(this.operatorName),
-      displayName: this.operatorName
+      displayName: this.operatorName,
+      createdAt: Date.now()
     };
 
     // 樂觀更新 (立即顯示在介面上)
@@ -853,8 +858,11 @@ class BookkeepingApp {
     this.showToast(`✅ 已記錄 ${category} ${signPrompt}`);
 
     // 後台異步同步至 Google Sheet
+    const addPromise = api.addEntry(payload);
+    payload._pendingPromise = addPromise;
+
     try {
-      const res = await api.addEntry(payload);
+      const res = await addPromise;
       if (res && res.success) {
         console.log('同步至 Google Sheet 成功:', res);
         if (res.rowId) {
@@ -876,7 +884,7 @@ class BookkeepingApp {
     }
   }
 
-  // 刪除紀錄 (支援傳入完整 item 避免列號位移與 local_ID 查無問題)
+  // 刪除紀錄 (精確刪除單一特定項目，絕不影響其他相同金額或分類的紀錄)
   async deleteEntry(itemOrId) {
     let itemToDelete = null;
     let targetId = '';
@@ -888,31 +896,49 @@ class BookkeepingApp {
       itemToDelete = this.entries.find(e => e.id === targetId);
     }
 
-    // 1. 登記墓碑快取，防止後續背景同步復活這筆紀錄
+    if (!itemToDelete && !targetId) return;
+
+    // 1. 只從本地陣列精確刪除這唯一一筆 (以 index 移除，絕不誤殺相同金額/分類的其他紀錄)
+    const targetIdx = this.entries.findIndex(e => targetId ? e.id === targetId : e === itemToDelete);
+    if (targetIdx !== -1) {
+      this.entries.splice(targetIdx, 1);
+    }
+    this.saveLocalEntries();
+
+    // 2. 登記 1 個墓碑快取
     if (itemToDelete) {
       this.markItemAsDeleted(itemToDelete);
     } else if (targetId) {
       this.markItemAsDeleted({ id: targetId });
     }
 
-    // 2. 立即自本地陣列中移除
-    this.entries = this.entries.filter(e => {
-      if (targetId && e.id === targetId) return false;
-      if (itemToDelete && this.isItemDeleted(e)) return false;
-      return true;
-    });
-    this.saveLocalEntries();
-
     // 3. 立即強制重新渲染畫面 (即時更新明細、統計加總與行事曆圓點)
     this.render();
     const catLabel = itemToDelete ? `${itemToDelete.category} $${itemToDelete.amount}` : '該筆紀錄';
     this.showToast(`🗑️ 已刪除 ${catLabel}`);
 
-    // 4. 後台非同步通知雲端刪除
+    // 4. 若該筆本地紀錄仍有背景新增請求在進行，等待其完成以取得 rowId
+    if (itemToDelete && itemToDelete._pendingPromise) {
+      try {
+        const addRes = await itemToDelete._pendingPromise;
+        if (addRes && addRes.rowId) {
+          const rowIdStr = 'row_' + addRes.rowId;
+          itemToDelete.rowId = rowIdStr;
+          // 同步更新剛剛存入的墓碑快取
+          const tb = this.deletedItems.find(d => d.id === itemToDelete.id);
+          if (tb) {
+            tb.rowId = rowIdStr;
+            this.saveDeletedTombstones();
+          }
+        }
+      } catch (err) {}
+    }
+
+    // 5. 後台非同步通知雲端刪除
     try {
       const payload = itemToDelete ? {
-        id: itemToDelete.id,
-        rowId: itemToDelete.id,
+        id: itemToDelete.rowId || itemToDelete.id,
+        rowId: itemToDelete.rowId || itemToDelete.id,
         date: itemToDelete.date,
         category: itemToDelete.category,
         amount: itemToDelete.amount,
@@ -1400,21 +1426,60 @@ class BookkeepingApp {
       const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
       console.log(`從 Google Sheet 同步 ${year}年${month}月 資料:`, res.entries.length, '筆');
       
-      // 1. 過濾掉已標記刪除的紀錄 (避免因雲端延遲而復活)
-      const validServerEntries = res.entries.filter(item => !this.isItemDeleted(item));
+      // 1. 智慧配對墓碑過濾已刪除紀錄 (每個墓碑最多扣抵 1 筆紀錄，絕不誤刪同日同金額的其他筆)
+      const now = Date.now();
+      const activeTombstones = (this.deletedItems || []).filter(d => (now - (d.time || 0)) < 86400000);
+      const consumedTombstoneIndices = new Set();
+
+      const validServerEntries = [];
+      for (const item of res.entries) {
+        // 先嘗試精確 ID / rowId 匹配
+        let matchedIdx = activeTombstones.findIndex((tb, idx) => {
+          if (consumedTombstoneIndices.has(idx)) return false;
+          if (tb.rowId && (tb.rowId === item.rowId || tb.rowId === item.id || tb.rowId === 'row_' + item.rowId)) return true;
+          if (tb.id && (tb.id === item.id || tb.id === item.rowId)) return true;
+          return false;
+        });
+
+        // 若無精確 ID 匹配（例如剛新增時為 local_ ID 即刪除），則使用特徵配對，但 1 個墓碑僅能消耗 1 筆
+        if (matchedIdx === -1) {
+          matchedIdx = activeTombstones.findIndex((tb, idx) => {
+            if (consumedTombstoneIndices.has(idx)) return false;
+            if (tb.id && !tb.id.startsWith('local_') && tb.id !== item.id) return false;
+            return tb.date === item.date &&
+                   tb.category === item.category &&
+                   Math.abs(Number(tb.amount) - Number(item.amount)) < 0.001 &&
+                   (tb.account || '').trim().toLowerCase() === (item.account || '').trim().toLowerCase();
+          });
+        }
+
+        if (matchedIdx !== -1) {
+          consumedTombstoneIndices.add(matchedIdx);
+        } else {
+          validServerEntries.push(item);
+        }
+      }
 
       // 2. 保留本地尚未被後端收錄的「剛新增」紀錄 (local_ 開頭且在 15 分鐘內的項目)
+      const matchedServerIndices = new Set();
       const pendingLocalEntries = this.entries.filter(e => {
         if (!e.date || !e.date.startsWith(monthPrefix)) return false;
         if (!String(e.id).startsWith('local_')) return false;
         if (this.isItemDeleted(e)) return false;
-        const alreadyInServer = validServerEntries.some(s => 
-          s.date === e.date &&
-          s.category === e.category &&
-          Number(s.amount) === Number(e.amount) &&
-          (s.account || '') === (e.account || '')
-        );
-        return !alreadyInServer;
+
+        const serverIdx = validServerEntries.findIndex((s, idx) => {
+          if (matchedServerIndices.has(idx)) return false;
+          return s.date === e.date &&
+                 s.category === e.category &&
+                 Math.abs(Number(s.amount) - Number(e.amount)) < 0.001 &&
+                 (s.account || '').trim().toLowerCase() === (e.account || '').trim().toLowerCase();
+        });
+
+        if (serverIdx !== -1) {
+          matchedServerIndices.add(serverIdx);
+          return false;
+        }
+        return true;
       });
 
       // 3. 保留非本月份的本地既有資料
