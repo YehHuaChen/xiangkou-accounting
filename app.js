@@ -58,6 +58,7 @@ class BookkeepingApp {
     this.selectedDate = this.formatDate(now);
 
     this.currentView = 'calendar'; // 'calendar' 或 'list'
+    this.initDeletedTombstones();
     this.entries = this.loadLocalEntries();
     
     this.initElements();
@@ -65,8 +66,62 @@ class BookkeepingApp {
     this.initFormOptions();
     this.render();
     
-    // 啟動時預設只從 Google Sheet 拉取當前月份的最新資料 (秒開不卡頓)
-    this.syncFromBackend(this.currentYear, this.currentMonth);
+    // 啟動時預設從 Google Sheet 拉取當前月份的最新資料 (秒開不卡頓)
+    this.syncFromBackend(this.currentYear, this.currentMonth, false);
+
+    // 當使用者從 LINE 或背景切換回網頁時，自動無聲背景同步最新資料
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        this.syncFromBackend(this.currentYear, this.currentMonth, false);
+      }
+    });
+    window.addEventListener('focus', () => {
+      this.syncFromBackend(this.currentYear, this.currentMonth, false);
+    });
+  }
+
+  // 初始化已刪除項目的墓碑快取 (防止雲端延遲導致刪除的資料復活)
+  initDeletedTombstones() {
+    try {
+      const raw = localStorage.getItem('xiangkou_deleted_items');
+      this.deletedItems = raw ? JSON.parse(raw) : [];
+      const fifteenMinsAgo = Date.now() - 15 * 60 * 1000;
+      this.deletedItems = this.deletedItems.filter(d => d.time > fifteenMinsAgo);
+      this.saveDeletedTombstones();
+    } catch (e) {
+      this.deletedItems = [];
+    }
+  }
+
+  saveDeletedTombstones() {
+    try {
+      localStorage.setItem('xiangkou_deleted_items', JSON.stringify(this.deletedItems));
+    } catch (e) {}
+  }
+
+  markItemAsDeleted(item) {
+    if (!item) return;
+    const entry = {
+      id: item.id || '',
+      date: item.date || '',
+      category: item.category || '',
+      amount: Number(item.amount) || 0,
+      account: (item.account || '').trim().toLowerCase(),
+      time: Date.now()
+    };
+    this.deletedItems.push(entry);
+    this.saveDeletedTombstones();
+  }
+
+  isItemDeleted(item) {
+    if (!item || !Array.isArray(this.deletedItems)) return false;
+    return this.deletedItems.some(d => {
+      if (item.id && d.id && item.id === d.id) return true;
+      if (item.date === d.date && item.category === d.category && Number(item.amount) === d.amount && (item.account || '').trim().toLowerCase() === d.account) {
+        return true;
+      }
+      return false;
+    });
   }
 
   // 讀取本地快取資料
@@ -802,8 +857,11 @@ class BookkeepingApp {
       const res = await api.addEntry(payload);
       if (res && res.success) {
         console.log('同步至 Google Sheet 成功:', res);
-        const [entryY, entryM] = date.split('-').map(Number);
-        this.syncFromBackend(entryY, entryM);
+        if (res.rowId) {
+          payload.id = 'row_' + res.rowId;
+          payload.rowId = res.rowId;
+          this.saveLocalEntries();
+        }
       } else if (res && !res.success) {
         console.warn('雲端寫入提示:', res.message);
       }
@@ -830,12 +888,27 @@ class BookkeepingApp {
       itemToDelete = this.entries.find(e => e.id === targetId);
     }
 
-    this.entries = this.entries.filter(e => e.id !== targetId);
+    // 1. 登記墓碑快取，防止後續背景同步復活這筆紀錄
+    if (itemToDelete) {
+      this.markItemAsDeleted(itemToDelete);
+    } else if (targetId) {
+      this.markItemAsDeleted({ id: targetId });
+    }
+
+    // 2. 立即自本地陣列中移除
+    this.entries = this.entries.filter(e => {
+      if (targetId && e.id === targetId) return false;
+      if (itemToDelete && this.isItemDeleted(e)) return false;
+      return true;
+    });
     this.saveLocalEntries();
+
+    // 3. 立即強制重新渲染畫面 (即時更新明細、統計加總與行事曆圓點)
     this.render();
     const catLabel = itemToDelete ? `${itemToDelete.category} $${itemToDelete.amount}` : '該筆紀錄';
     this.showToast(`🗑️ 已刪除 ${catLabel}`);
 
+    // 4. 後台非同步通知雲端刪除
     try {
       const payload = itemToDelete ? {
         id: itemToDelete.id,
@@ -1320,20 +1393,41 @@ class BookkeepingApp {
     `;
   }
 
-  // 從 Google Sheet 後端同步指定月份的資料 (打開網頁只讀取當月，換月才讀取該月)
-  async syncFromBackend(year = this.currentYear, month = this.currentMonth) {
+  // 從 Google Sheet 後端同步指定月份的資料 (智慧合併，不覆蓋剛新增與已刪除的紀錄)
+  async syncFromBackend(year = this.currentYear, month = this.currentMonth, showToast = true) {
     const res = await api.getEntries(year, month);
     if (res && res.success && Array.isArray(res.entries)) {
       const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
       console.log(`從 Google Sheet 同步 ${year}年${month}月 資料:`, res.entries.length, '筆');
       
-      // 保留其他月份的既有資料，僅替換該月份的最新記錄
-      this.entries = this.entries.filter(e => !(e.date && e.date.startsWith(monthPrefix)));
-      this.entries.push(...res.entries);
+      // 1. 過濾掉已標記刪除的紀錄 (避免因雲端延遲而復活)
+      const validServerEntries = res.entries.filter(item => !this.isItemDeleted(item));
+
+      // 2. 保留本地尚未被後端收錄的「剛新增」紀錄 (local_ 開頭且在 15 分鐘內的項目)
+      const pendingLocalEntries = this.entries.filter(e => {
+        if (!e.date || !e.date.startsWith(monthPrefix)) return false;
+        if (!String(e.id).startsWith('local_')) return false;
+        if (this.isItemDeleted(e)) return false;
+        const alreadyInServer = validServerEntries.some(s => 
+          s.date === e.date &&
+          s.category === e.category &&
+          Number(s.amount) === Number(e.amount) &&
+          (s.account || '') === (e.account || '')
+        );
+        return !alreadyInServer;
+      });
+
+      // 3. 保留非本月份的本地既有資料
+      const otherMonthsEntries = this.entries.filter(e => !(e.date && e.date.startsWith(monthPrefix)));
+
+      // 4. 合併所有資料 (本地待同步 + 雲端最新有效資料 + 其他月份資料)
+      this.entries = [...pendingLocalEntries, ...validServerEntries, ...otherMonthsEntries];
       
       this.saveLocalEntries();
       this.render();
-      this.showToast(`☁️ 已同步 ${year}年${month}月 (${res.entries.length} 筆)`);
+      if (showToast) {
+        this.showToast(`☁️ 已同步 ${year}年${month}月 (${validServerEntries.length} 筆)`);
+      }
     }
   }
 

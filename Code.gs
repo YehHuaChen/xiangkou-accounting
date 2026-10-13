@@ -501,13 +501,14 @@ function submitEntryFromForm(payload) {
 
   const sheet = getRecordSheet_();
   const duplicateInfo = checkDuplicate_(sheet, parsed);
-  writeEntry_(userId, displayName, parsed);
+  const newRowNum = writeEntry_(userId, displayName, parsed);
 
   const dateLabel = Utilities.formatDate(entryDate, Session.getScriptTimeZone(), 'M/d');
   const sign = type === '收入' ? '+' : '-';
 
   const result = {
     success: true,
+    rowId: newRowNum,
     dateLabel: dateLabel,
     section: section,
     category: category,
@@ -575,6 +576,8 @@ function writeEntry_(userId, displayName, parsed) {
     parsed.note,
     '' // 已還款,新記錄預設空白(未還)
   ]);
+  SpreadsheetApp.flush();
+  return sheet.getLastRow();
 }
 
 // ------------------------------------------------
@@ -588,6 +591,7 @@ function deleteLastEntry_(userId) {
   for (let row = data.length - 1; row >= 1; row--) {
     if (data[row][1] === userId) {
       sheet.deleteRow(row + 1);
+      SpreadsheetApp.flush();
       // 欄位順序:時間,使用者ID,使用者名稱,類型,區塊,分類,帳戶,金額,備註,已還款
       return '🗑️ 已刪除你最後一筆記錄(' + data[row][4] + '):\n' +
         data[row][5] + ' ' + data[row][6] + ' ' + data[row][7] + ' ' + (data[row][8] || '');
@@ -629,6 +633,7 @@ function deleteEntryRecord_(payload) {
 
       if (match) {
         sheet.deleteRow(rowNum);
+        SpreadsheetApp.flush();
         return { success: true, message: '已成功刪除該筆紀錄', deletedRowNum: rowNum };
       }
     }
@@ -655,6 +660,7 @@ function deleteEntryRecord_(payload) {
 
       if (match) {
         sheet.deleteRow(r + 1);
+        SpreadsheetApp.flush();
         return { success: true, message: '已依特徵匹配成功刪除', deletedRowNum: r + 1 };
       }
     }
@@ -665,6 +671,7 @@ function deleteEntryRecord_(payload) {
     const rowNum = parseInt(rowId.replace('row_', ''), 10);
     if (rowNum >= 2 && rowNum <= sheet.getLastRow()) {
       sheet.deleteRow(rowNum);
+      SpreadsheetApp.flush();
       return { success: true, message: '已刪除指定列', deletedRowNum: rowNum };
     }
   }
