@@ -444,6 +444,18 @@ function submitEntryFromForm(payload) {
     return { success: false, message: '資料有誤，請重新填寫。' };
   }
 
+  // 0. 唯一性去重保護 (Idempotency Key)：防禦瀏覽器逾時自動重試 (GET Retry) 造成重複寫入試算表
+  const cache = CacheService.getScriptCache();
+  const idempotencyKey = payload.id ? ('entry_' + payload.id) : null;
+  if (idempotencyKey) {
+    const cachedResult = cache.get(idempotencyKey);
+    if (cachedResult) {
+      try {
+        return JSON.parse(cachedResult);
+      } catch (e) {}
+    }
+  }
+
   const amount = parseFloat(payload.amount);
   if (!payload.amount || isNaN(amount) || amount === 0) {
     return { success: false, message: '金額請輸入非 0 的數字。' };
@@ -521,6 +533,12 @@ function submitEntryFromForm(payload) {
     result.duplicateWarning =
       duplicateInfo.userName + ' 已經記過一筆一模一樣的(' + dateLabel + ' ' + category + ' $' + amount +
       (account ? '，' + account : '') + '),如果是不小心重複記的,可以到 LINE 打「刪除」撤銷。';
+  }
+
+  if (idempotencyKey) {
+    try {
+      cache.put(idempotencyKey, JSON.stringify(result), 180);
+    } catch (e) {}
   }
 
   return result;

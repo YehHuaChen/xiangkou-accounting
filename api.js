@@ -11,6 +11,7 @@ class ApiService {
     } else {
       this.apiUrl = saved;
     }
+    this.inFlightAdd = new Map();
   }
 
   setApiUrl(url) {
@@ -42,21 +43,33 @@ class ApiService {
     }
   }
 
-  // 新增記帳紀錄 (直接使用 GET action=addEntryGet，避免 GAS POST 302 跨域重定向導致重複寫入)
+  // 新增記帳紀錄 (具備同請求併發去重與安全防呆)
   async addEntry(payload) {
     if (!this.apiUrl) {
       return { success: false, message: '尚未設定 API 網址' };
     }
 
-    try {
-      const getUrl = `${this.apiUrl}?action=addEntryGet&payload=${encodeURIComponent(JSON.stringify(payload))}&_t=${Date.now()}`;
-      const res = await fetch(getUrl);
-      const data = await res.json();
-      return data;
-    } catch (err) {
-      console.error('API 寫入失敗:', err);
-      return { success: false, message: '連線失敗: ' + err.message };
+    const key = (payload && payload.id) ? payload.id : JSON.stringify(payload);
+    if (this.inFlightAdd.has(key)) {
+      return this.inFlightAdd.get(key);
     }
+
+    const task = (async () => {
+      try {
+        const getUrl = `${this.apiUrl}?action=addEntryGet&payload=${encodeURIComponent(JSON.stringify(payload))}&_t=${Date.now()}`;
+        const res = await fetch(getUrl);
+        const data = await res.json();
+        return data;
+      } catch (err) {
+        console.error('API 寫入失敗:', err);
+        return { success: false, message: '連線失敗: ' + err.message };
+      } finally {
+        setTimeout(() => this.inFlightAdd.delete(key), 3000);
+      }
+    })();
+
+    this.inFlightAdd.set(key, task);
+    return task;
   }
 
   // 刪除記帳紀錄 (支援 GET deleteEntryGet 與完整特徵參數)

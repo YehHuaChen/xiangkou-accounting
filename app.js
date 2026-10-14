@@ -83,11 +83,11 @@ class BookkeepingApp {
   // 初始化已刪除項目的墓碑快取 (防止雲端延遲導致刪除的資料復活)
   initDeletedTombstones() {
     try {
-      // 升級至 v=18，重置舊版有問題的模糊墓碑快取，確保現有資料正常顯示
+      // 升級至 v=19，重置快取確保與雲端試算表精確同步
       const v = localStorage.getItem('xiangkou_tombstone_version');
-      if (v !== 'v18') {
+      if (v !== 'v19') {
         localStorage.removeItem('xiangkou_deleted_items');
-        localStorage.setItem('xiangkou_tombstone_version', 'v18');
+        localStorage.setItem('xiangkou_tombstone_version', 'v19');
       }
       const raw = localStorage.getItem('xiangkou_deleted_items');
       this.deletedItems = raw ? JSON.parse(raw) : [];
@@ -784,7 +784,12 @@ class BookkeepingApp {
   // 處理新增記帳送出
   async handleFormSubmit(e) {
     e.preventDefault();
-    if (this.isSubmitting) return;
+    const now = Date.now();
+    if (this.isSubmitting || (now - (this._lastSubmitTime || 0) < 1800)) {
+      return;
+    }
+    this._lastSubmitTime = now;
+    this.isSubmitting = true;
 
     let amount = parseFloat(this.entryAmount.value);
     if (isNaN(amount) || amount === 0) {
