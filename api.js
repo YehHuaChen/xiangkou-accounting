@@ -12,6 +12,7 @@ class ApiService {
       this.apiUrl = saved;
     }
     this.inFlightAdd = new Map();
+    this.writeQueue = Promise.resolve();
   }
 
   setApiUrl(url) {
@@ -43,7 +44,7 @@ class ApiService {
     }
   }
 
-  // 新增記帳紀錄 (具備同請求併發去重與安全防呆)
+  // 新增記帳紀錄 (使用 POST 防止瀏覽器底層在切換 App 或網路延遲時自動重試 GET 導致重複寫入兩筆，並以佇列依序執行)
   async addEntry(payload) {
     if (!this.apiUrl) {
       return { success: false, message: '尚未設定 API 網址' };
@@ -54,45 +55,59 @@ class ApiService {
       return this.inFlightAdd.get(key);
     }
 
-    const task = (async () => {
+    const runWrite = async () => {
       try {
-        const getUrl = `${this.apiUrl}?action=addEntryGet&payload=${encodeURIComponent(JSON.stringify(payload))}&_t=${Date.now()}`;
-        const res = await fetch(getUrl);
+        const res = await fetch(this.apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'addEntry',
+            payload: payload
+          })
+        });
         const data = await res.json();
         return data;
       } catch (err) {
-        console.error('API 寫入失敗:', err);
-        return { success: false, message: '連線失敗: ' + err.message };
+        console.error('API 寫入失敗 (不重送以避免重複記帳):', err);
+        return { success: false, uncertain: true, message: '連線中斷: ' + err.message };
       } finally {
-        setTimeout(() => this.inFlightAdd.delete(key), 3000);
+        setTimeout(() => this.inFlightAdd.delete(key), 5000);
       }
-    })();
+    };
 
+    const task = this.writeQueue.then(runWrite, runWrite);
+    this.writeQueue = task.catch(() => {});
     this.inFlightAdd.set(key, task);
     return task;
   }
 
-  // 刪除記帳紀錄 (支援 GET deleteEntryGet 與完整特徵參數)
+  // 刪除記帳紀錄 (支援 GET deleteEntryGet 與完整特徵參數，排入寫入佇列避免衝突)
   async deleteEntry(itemOrRowId) {
     if (!this.apiUrl) {
       return { success: false, message: '尚未設定 API 網址' };
     }
 
-    try {
-      let payload = {};
-      if (typeof itemOrRowId === 'object' && itemOrRowId !== null) {
-        payload = itemOrRowId;
-      } else {
-        payload = { rowId: itemOrRowId };
+    const runDelete = async () => {
+      try {
+        let payload = {};
+        if (typeof itemOrRowId === 'object' && itemOrRowId !== null) {
+          payload = itemOrRowId;
+        } else {
+          payload = { rowId: itemOrRowId };
+        }
+        const url = `${this.apiUrl}?action=deleteEntryGet&payload=${encodeURIComponent(JSON.stringify(payload))}&_t=${Date.now()}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        return data;
+      } catch (err) {
+        console.error('刪除 API 呼叫失敗:', err);
+        return { success: false, message: err.message };
       }
-      const url = `${this.apiUrl}?action=deleteEntryGet&payload=${encodeURIComponent(JSON.stringify(payload))}&_t=${Date.now()}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      return data;
-    } catch (err) {
-      console.error('刪除 API 呼叫失敗:', err);
-      return { success: false, message: err.message };
-    }
+    };
+
+    const task = this.writeQueue.then(runDelete, runDelete);
+    this.writeQueue = task.catch(() => {});
+    return task;
   }
 
   // 取得代墊未還款清單

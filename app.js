@@ -58,6 +58,10 @@ class BookkeepingApp {
     this.selectedDate = this.formatDate(now);
 
     this.currentView = 'calendar'; // 'calendar' 或 'list'
+    this.pendingWriteCount = 0;
+    this.writeGeneration = 0;
+    this.lastSyncTime = 0;
+    this.expectedSignatureCounts = {};
     this.initDeletedTombstones();
     this.entries = this.loadLocalEntries();
     
@@ -69,25 +73,46 @@ class BookkeepingApp {
     // 啟動時預設從 Google Sheet 拉取當前月份的最新資料 (秒開不卡頓)
     this.syncFromBackend(this.currentYear, this.currentMonth, false);
 
-    // 當使用者從 LINE 或背景切換回網頁時，自動無聲背景同步最新資料
+    // 當使用者從 LINE 或背景切換回網頁時，使用節流與寫入保護避免與新增記帳發生衝突
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
-        this.syncFromBackend(this.currentYear, this.currentMonth, false);
+        this.triggerBackgroundSync();
       }
     });
     window.addEventListener('focus', () => {
-      this.syncFromBackend(this.currentYear, this.currentMonth, false);
+      this.triggerBackgroundSync();
     });
+  }
+
+  triggerBackgroundSync() {
+    if (this.pendingWriteCount > 0) return;
+    if (this.addModal && this.addModal.classList.contains('active')) return;
+    const now = Date.now();
+    if (now - (this.lastSyncTime || 0) < 12000) return;
+    if (now - (this._lastSubmitTime || 0) < 8000) return;
+    this.syncFromBackend(this.currentYear, this.currentMonth, false);
+  }
+
+  getItemSignature(item) {
+    if (!item) return '';
+    return [
+      item.date || '',
+      item.type || '支出',
+      (item.category || '').trim(),
+      Number(item.amount) || 0,
+      (item.account || '').trim().toLowerCase(),
+      (item.note || '').trim()
+    ].join('|');
   }
 
   // 初始化已刪除項目的墓碑快取 (防止雲端延遲導致刪除的資料復活)
   initDeletedTombstones() {
     try {
-      // 升級至 v=19，重置快取確保與雲端試算表精確同步
+      // 升級至 v=20，重置快取確保與雲端試算表精確同步
       const v = localStorage.getItem('xiangkou_tombstone_version');
-      if (v !== 'v19') {
+      if (v !== 'v20') {
         localStorage.removeItem('xiangkou_deleted_items');
-        localStorage.setItem('xiangkou_tombstone_version', 'v19');
+        localStorage.setItem('xiangkou_tombstone_version', 'v20');
       }
       const raw = localStorage.getItem('xiangkou_deleted_items');
       this.deletedItems = raw ? JSON.parse(raw) : [];
@@ -788,8 +813,6 @@ class BookkeepingApp {
     if (this.isSubmitting || (now - (this._lastSubmitTime || 0) < 1800)) {
       return;
     }
-    this._lastSubmitTime = now;
-    this.isSubmitting = true;
 
     let amount = parseFloat(this.entryAmount.value);
     if (isNaN(amount) || amount === 0) {
@@ -797,12 +820,14 @@ class BookkeepingApp {
       return;
     }
 
+    this._lastSubmitTime = now;
+    this.isSubmitting = true;
+
     // 如果使用者在空欄位時點了負數模式，在此將金額轉為負值
     if (this.isNegativeAmount && amount > 0) {
       amount = -amount;
     }
 
-    this.isSubmitting = true;
     const submitBtn = document.getElementById('submit-record-btn');
     if (submitBtn) {
       submitBtn.disabled = true;
@@ -848,6 +873,14 @@ class BookkeepingApp {
       createdAt: Date.now()
     };
 
+    // 紀錄本次新增後該特徵的預期筆數上限 (防止網路異常重試時雲端多寫入重複筆數)
+    const sig = this.getItemSignature(payload);
+    const existingSameCount = this.entries.filter(item => this.getItemSignature(item) === sig).length;
+    this.expectedSignatureCounts[sig] = {
+      count: existingSameCount + 1,
+      time: Date.now()
+    };
+
     // 樂觀更新 (立即顯示在介面上)
     this.entries.unshift(payload);
     this.saveLocalEntries();
@@ -863,6 +896,8 @@ class BookkeepingApp {
     this.showToast(`✅ 已記錄 ${category} ${signPrompt}`);
 
     // 後台異步同步至 Google Sheet
+    this.pendingWriteCount = (this.pendingWriteCount || 0) + 1;
+    this.writeGeneration = (this.writeGeneration || 0) + 1;
     const addPromise = api.addEntry(payload);
     payload._pendingPromise = addPromise;
 
@@ -871,8 +906,15 @@ class BookkeepingApp {
       if (res && res.success) {
         console.log('同步至 Google Sheet 成功:', res);
         if (res.rowId) {
-          payload.id = 'row_' + res.rowId;
-          payload.rowId = res.rowId;
+          const newId = 'row_' + res.rowId;
+          const dupIdx = this.entries.findIndex(item => item !== payload && (item.id === newId || item.rowId === res.rowId));
+          if (dupIdx !== -1) {
+            const pIdx = this.entries.indexOf(payload);
+            if (pIdx !== -1) this.entries.splice(pIdx, 1);
+          } else {
+            payload.id = newId;
+            payload.rowId = res.rowId;
+          }
           this.saveLocalEntries();
         }
       } else if (res && !res.success) {
@@ -881,10 +923,18 @@ class BookkeepingApp {
     } catch (err) {
       console.warn('同步至雲端失敗 (仍保存在手機上):', err);
     } finally {
+      this.pendingWriteCount = Math.max(0, (this.pendingWriteCount || 1) - 1);
       this.isSubmitting = false;
       if (submitBtn) {
         submitBtn.disabled = false;
         submitBtn.textContent = '送出記帳';
+      }
+      if (this.pendingWriteCount === 0) {
+        setTimeout(() => {
+          if (this.pendingWriteCount === 0) {
+            this.syncFromBackend(this.currentYear, this.currentMonth, false);
+          }
+        }, 1200);
       }
     }
   }
@@ -902,6 +952,13 @@ class BookkeepingApp {
     }
 
     if (!itemToDelete && !targetId) return;
+
+    if (itemToDelete) {
+      const sig = this.getItemSignature(itemToDelete);
+      if (this.expectedSignatureCounts && this.expectedSignatureCounts[sig]) {
+        this.expectedSignatureCounts[sig].count = Math.max(0, this.expectedSignatureCounts[sig].count - 1);
+      }
+    }
 
     // 1. 只從本地陣列精確刪除這唯一一筆 (以 index 移除，絕不誤殺相同金額/分類的其他紀錄)
     const targetIdx = this.entries.findIndex(e => targetId ? e.id === targetId : e === itemToDelete);
@@ -922,25 +979,28 @@ class BookkeepingApp {
     const catLabel = itemToDelete ? `${itemToDelete.category} $${itemToDelete.amount}` : '該筆紀錄';
     this.showToast(`🗑️ 已刪除 ${catLabel}`);
 
-    // 4. 若該筆本地紀錄仍有背景新增請求在進行，等待其完成以取得 rowId
-    if (itemToDelete && itemToDelete._pendingPromise) {
-      try {
-        const addRes = await itemToDelete._pendingPromise;
-        if (addRes && addRes.rowId) {
-          const rowIdStr = 'row_' + addRes.rowId;
-          itemToDelete.rowId = rowIdStr;
-          // 同步更新剛剛存入的墓碑快取
-          const tb = this.deletedItems.find(d => d.id === itemToDelete.id);
-          if (tb) {
-            tb.rowId = rowIdStr;
-            this.saveDeletedTombstones();
-          }
-        }
-      } catch (err) {}
-    }
+    this.pendingWriteCount = (this.pendingWriteCount || 0) + 1;
+    this.writeGeneration = (this.writeGeneration || 0) + 1;
 
-    // 5. 後台非同步通知雲端刪除
     try {
+      // 4. 若該筆本地紀錄仍有背景新增請求在進行，等待其完成以取得 rowId
+      if (itemToDelete && itemToDelete._pendingPromise) {
+        try {
+          const addRes = await itemToDelete._pendingPromise;
+          if (addRes && addRes.rowId) {
+            const rowIdStr = 'row_' + addRes.rowId;
+            itemToDelete.rowId = rowIdStr;
+            // 同步更新剛剛存入的墓碑快取
+            const tb = this.deletedItems.find(d => d.id === itemToDelete.id);
+            if (tb) {
+              tb.rowId = rowIdStr;
+              this.saveDeletedTombstones();
+            }
+          }
+        } catch (err) {}
+      }
+
+      // 5. 後台非同步通知雲端刪除
       const payload = itemToDelete ? {
         id: itemToDelete.rowId || itemToDelete.id,
         rowId: itemToDelete.rowId || itemToDelete.id,
@@ -960,6 +1020,8 @@ class BookkeepingApp {
       }
     } catch (err) {
       console.warn('雲端刪除失敗:', err);
+    } finally {
+      this.pendingWriteCount = Math.max(0, (this.pendingWriteCount || 1) - 1);
     }
   }
 
@@ -968,19 +1030,29 @@ class BookkeepingApp {
     this.accountsModal.classList.add('active');
     this.unreimbursedListContent.innerHTML = '<p style="text-align:center; padding:20px; color:#8e8e93;">讀取最新未結算紀錄中…</p>';
 
-    // 查看對帳時，拉取全部資料以確保跨月份代墊款項不遺漏
+    // 查看對帳時，拉取全部資料以確保跨月份代墊款項不遺漏（不污染本機月份快取陣列，避免列號位移產生重複項目）
+    let allEntries = this.entries;
     try {
       const res = await api.getEntries();
       if (res && res.success && Array.isArray(res.entries)) {
-        res.entries.forEach(item => {
-          const idx = this.entries.findIndex(e => e.id === item.id);
-          if (idx !== -1) {
-            this.entries[idx] = item;
+        const now = Date.now();
+        const activeTombstones = (this.deletedItems || []).filter(d => (now - (d.time || 0)) < 86400000);
+        const consumed = new Set();
+        const validServer = [];
+        for (const item of res.entries) {
+          let mIdx = activeTombstones.findIndex((tb, idx) => {
+            if (consumed.has(idx)) return false;
+            if (tb.rowId && (tb.rowId === item.rowId || tb.rowId === item.id || tb.rowId === 'row_' + item.rowId)) return true;
+            if (tb.id && (tb.id === item.id || tb.id === item.rowId)) return true;
+            return false;
+          });
+          if (mIdx !== -1) {
+            consumed.add(mIdx);
           } else {
-            this.entries.push(item);
+            validServer.push(item);
           }
-        });
-        this.saveLocalEntries();
+        }
+        allEntries = validServer;
       }
     } catch (err) {}
 
@@ -988,7 +1060,7 @@ class BookkeepingApp {
     const totals = {};
     this.personFormulas = {};
 
-    this.entries.forEach(item => {
+    allEntries.forEach(item => {
       const acc = (item.account || '現金').trim();
       const reimbursed = String(item.reimbursed || '').trim();
       if (!acc || acc === '現金' || acc === '公司' || reimbursed) return;
@@ -1426,7 +1498,18 @@ class BookkeepingApp {
 
   // 從 Google Sheet 後端同步指定月份的資料 (智慧合併，不覆蓋剛新增與已刪除的紀錄)
   async syncFromBackend(year = this.currentYear, month = this.currentMonth, showToast = true) {
+    if (!showToast && this.pendingWriteCount > 0) {
+      return;
+    }
+    const genBefore = this.writeGeneration;
+    this.lastSyncTime = Date.now();
+
     const res = await api.getEntries(year, month);
+    if (!showToast && (this.pendingWriteCount > 0 || this.writeGeneration !== genBefore)) {
+      // 拉取期間有新的寫入或刪除發生，捨棄此次過時結果避免競態重複顯示
+      return;
+    }
+
     if (res && res.success && Array.isArray(res.entries)) {
       const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
       console.log(`從 Google Sheet 同步 ${year}年${month}月 資料:`, res.entries.length, '筆');
@@ -1436,7 +1519,7 @@ class BookkeepingApp {
       const activeTombstones = (this.deletedItems || []).filter(d => (now - (d.time || 0)) < 86400000);
       const consumedTombstoneIndices = new Set();
 
-      const validServerEntries = [];
+      const rawValidServerEntries = [];
       for (const item of res.entries) {
         // 先嘗試精確 ID / rowId 匹配
         let matchedIdx = activeTombstones.findIndex((tb, idx) => {
@@ -1461,8 +1544,33 @@ class BookkeepingApp {
         if (matchedIdx !== -1) {
           consumedTombstoneIndices.add(matchedIdx);
         } else {
-          validServerEntries.push(item);
+          rawValidServerEntries.push(item);
         }
+      }
+
+      // 1.5 自動修復防護：若剛送出的紀錄因網路重試而在雲端產生超出預期的重複筆數，自動攔截並背景清理多餘列
+      const sigSeenCounts = {};
+      const validServerEntries = [];
+      for (const item of rawValidServerEntries) {
+        const sig = this.getItemSignature(item);
+        const expectedInfo = this.expectedSignatureCounts && this.expectedSignatureCounts[sig];
+        if (expectedInfo && (now - expectedInfo.time) < 300000) {
+          sigSeenCounts[sig] = (sigSeenCounts[sig] || 0) + 1;
+          if (sigSeenCounts[sig] > expectedInfo.count) {
+            console.warn('自動攔截並清理重複寫入的紀錄:', item);
+            this.markItemAsDeleted(item);
+            api.deleteEntry({
+              id: item.rowId || item.id,
+              rowId: item.rowId || item.id,
+              date: item.date,
+              category: item.category,
+              amount: item.amount,
+              account: item.account
+            });
+            continue;
+          }
+        }
+        validServerEntries.push(item);
       }
 
       // 2. 保留本地尚未被後端收錄的「剛新增」紀錄 (local_ 開頭且在 15 分鐘內的項目)
@@ -1475,6 +1583,7 @@ class BookkeepingApp {
         const serverIdx = validServerEntries.findIndex((s, idx) => {
           if (matchedServerIndices.has(idx)) return false;
           return s.date === e.date &&
+                 (s.type || '支出') === (e.type || '支出') &&
                  s.category === e.category &&
                  Math.abs(Number(s.amount) - Number(e.amount)) < 0.001 &&
                  (s.account || '').trim().toLowerCase() === (e.account || '').trim().toLowerCase();
