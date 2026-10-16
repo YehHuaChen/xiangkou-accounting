@@ -723,6 +723,10 @@ class BookkeepingApp {
       }
     });
 
+    // 點擊整筆明細 → 修改
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', () => this.openEditModal(item));
+
     return el;
   }
 
@@ -773,6 +777,10 @@ class BookkeepingApp {
 
   // 打開新增記帳 Modal
   openAddModal() {
+    this.editingItem = null;
+    const titleEl = document.getElementById('add-modal-title');
+    if (titleEl) titleEl.textContent = '記一筆';
+
     this.isSubmitting = false;
     this.isNegativeAmount = false;
     this.syncSignUI();
@@ -802,8 +810,131 @@ class BookkeepingApp {
     setTimeout(() => this.entryAmount.focus(), 150);
   }
 
+  // 打開修改紀錄 Modal (重用記帳表單，欄位預先填入)
+  openEditModal(item) {
+    if (!item) return;
+    this.openAddModal();
+    this.editingItem = item;
+
+    const titleEl = document.getElementById('add-modal-title');
+    if (titleEl) titleEl.textContent = '修改紀錄';
+    const submitBtn = document.getElementById('submit-record-btn');
+    if (submitBtn) submitBtn.textContent = '儲存修改';
+
+    // 收支類型 (會重新渲染分類選單)
+    if (item.type === '收入') this.typeBtnIncome.click();
+    else this.typeBtnExpense.click();
+
+    this.entryDate.value = item.date;
+    this.entryAmount.value = item.amount;
+    this.syncSignUI();
+
+    // 分類：若選單沒有這個分類 (例如舊資料)，臨時補上避免被改成別的分類
+    this.entryCategorySelect.value = item.category;
+    if (this.entryCategorySelect.value !== item.category) {
+      const opt = document.createElement('option');
+      opt.value = item.category;
+      opt.textContent = item.category;
+      this.entryCategorySelect.appendChild(opt);
+      this.entryCategorySelect.value = item.category;
+    }
+
+    // 帳戶 / 代墊人
+    const acc = item.account || '公司';
+    this.entryAccount.value = acc;
+    if (this.entryAccount.value !== acc) {
+      this.entryAccount.value = '__other__';
+      this.entryCustomAccount.value = acc;
+      this.entryCustomAccount.style.display = 'block';
+    }
+
+    this.entryNote.value = item.note || '';
+  }
+
   closeAddModal() {
     this.addModal.classList.remove('active');
+  }
+
+  // 套用修改：先更新畫面，再通知雲端覆蓋該列
+  async applyEdit(item, fields) {
+    const original = {
+      date: item.date,
+      category: item.category,
+      amount: item.amount,
+      account: item.account
+    };
+    const oldSig = this.getItemSignature(item);
+
+    Object.assign(item, fields);
+    this.saveLocalEntries();
+
+    // 簽章筆數校正，避免「新增後防重複」機制把改出來的相同紀錄誤判成重複而清掉
+    const newSig = this.getItemSignature(item);
+    const countOf = (sig) => this.entries.filter(e => this.getItemSignature(e) === sig).length;
+    if (this.expectedSignatureCounts[oldSig]) {
+      this.expectedSignatureCounts[oldSig].count = countOf(oldSig);
+    }
+    this.expectedSignatureCounts[newSig] = { count: countOf(newSig), time: Date.now() };
+
+    this.selectedDate = item.date;
+    const parts = item.date.split('-');
+    this.currentYear = Number(parts[0]);
+    this.currentMonth = Number(parts[1]);
+
+    this.closeAddModal();
+    this.render();
+    this.showToast(`✏️ 已修改 ${item.category} $${item.amount}`);
+
+    this.pendingWriteCount = (this.pendingWriteCount || 0) + 1;
+    this.writeGeneration = (this.writeGeneration || 0) + 1;
+
+    let ok = false;
+    let message = '';
+    try {
+      // 剛新增還沒拿到列號：等新增完成
+      if (item._pendingPromise) {
+        try {
+          const addRes = await item._pendingPromise;
+          if (addRes && addRes.rowId) {
+            item.rowId = addRes.rowId;
+            if (String(item.id).startsWith('local_')) item.id = 'row_' + addRes.rowId;
+            this.saveLocalEntries();
+          }
+        } catch (err) {}
+      }
+
+      const rowId = String(item.id).startsWith('row_') ? item.id : (item.rowId ? 'row_' + item.rowId : '');
+      const res = await api.updateEntry({
+        rowId: rowId,
+        original: original,
+        entry: {
+          date: item.date,
+          type: item.type,
+          section: item.section,
+          category: item.category,
+          account: item.account,
+          amount: item.amount,
+          note: item.note
+        }
+      });
+      ok = !!(res && res.success);
+      message = res ? res.message : '無回應';
+    } catch (err) {
+      message = String(err);
+    } finally {
+      this.pendingWriteCount = Math.max(0, (this.pendingWriteCount || 1) - 1);
+      this.isSubmitting = false;
+    }
+
+    if (!ok) {
+      alert('修改未能寫入雲端：' + message + '\n將重新載入雲端資料。');
+    }
+    // 無論成功與否，以雲端為準重新同步
+    setTimeout(() => {
+      if (this.pendingWriteCount === 0) {
+        this.syncFromBackend(this.currentYear, this.currentMonth, false);
+      }
+    }, 800);
   }
 
   // 處理新增記帳送出
@@ -857,6 +988,26 @@ class BookkeepingApp {
           break;
         }
       }
+    }
+
+    // 修改模式：覆蓋原紀錄，不新增
+    if (this.editingItem) {
+      const target = this.editingItem;
+      this.editingItem = null;
+      await this.applyEdit(target, {
+        date: date,
+        type: isIncome ? '收入' : '支出',
+        section: section,
+        category: category,
+        account: account,
+        amount: amount,
+        note: note
+      });
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '送出記帳';
+      }
+      return;
     }
 
     const payload = {

@@ -272,6 +272,17 @@ function handleApiGet_(params) {
     }
   }
 
+  if (action === 'updateEntryGet') {
+    try {
+      const res = updateEntryRecord_(JSON.parse(params.payload));
+      return ContentService.createTextOutput(JSON.stringify(res))
+        .setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: String(err) }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
   if (action === 'syncPnL') {
     const year = Number(params.year);
     const month = Number(params.month);
@@ -695,6 +706,90 @@ function deleteEntryRecord_(payload) {
   }
 
   return { success: false, message: '找不到符合條件的紀錄' };
+}
+
+// ------------------------------------------------
+// 修改指定記帳紀錄 (以列號定位，並用原始內容比對防止列號位移改錯列)
+// payload: { rowId: 'row_123', original: {date,category,amount,account}, entry: {date,type,section,category,account,amount,note} }
+// ------------------------------------------------
+
+function updateEntryRecord_(payload) {
+  if (!payload || !payload.entry || !payload.original) {
+    return { success: false, message: '缺少修改資料' };
+  }
+  const e = payload.entry;
+  const orig = payload.original;
+
+  const amount = parseFloat(e.amount);
+  if (isNaN(amount) || amount === 0) {
+    return { success: false, message: '金額請輸入非 0 的數字。' };
+  }
+  if (!e.date || !e.category) {
+    return { success: false, message: '日期與分類不可空白。' };
+  }
+  const dateParts = String(e.date).split('-').map(Number);
+  if (dateParts.length !== 3 || dateParts.some(isNaN)) {
+    return { success: false, message: '日期格式有問題。' };
+  }
+
+  const tz = Session.getScriptTimeZone();
+  const sheet = getRecordSheet_();
+  const data = sheet.getDataRange().getValues();
+
+  function rowMatches(row) {
+    const ts = row[0];
+    const rowDateStr = (ts instanceof Date)
+      ? Utilities.formatDate(ts, tz, 'yyyy-MM-dd')
+      : String(ts || '').slice(0, 10);
+    return rowDateStr === String(orig.date).trim() &&
+           String(row[5] || '').trim() === String(orig.category || '').trim() &&
+           String(row[6] || '').trim().toLowerCase() === String(orig.account || '').trim().toLowerCase() &&
+           Number(row[7]) === Number(orig.amount);
+  }
+
+  let rowNum = -1;
+  const rid = payload.rowId;
+  if (rid && typeof rid === 'string' && rid.indexOf('row_') === 0) {
+    const n = parseInt(rid.replace('row_', ''), 10);
+    if (n >= 2 && n <= data.length && rowMatches(data[n - 1])) {
+      rowNum = n;
+    }
+  }
+  if (rowNum === -1) {
+    for (let r = data.length - 1; r >= 1; r--) {
+      if (rowMatches(data[r])) {
+        rowNum = r + 1;
+        break;
+      }
+    }
+  }
+  if (rowNum === -1) {
+    return { success: false, message: '找不到要修改的紀錄(可能已被刪除或內容已變動)' };
+  }
+
+  // 日期沒變就保留原本的時間，日期改了才用新日期
+  const oldTs = data[rowNum - 1][0];
+  const oldDateStr = (oldTs instanceof Date) ? Utilities.formatDate(oldTs, tz, 'yyyy-MM-dd') : '';
+  let newTs;
+  if (oldDateStr === String(e.date).trim() && oldTs instanceof Date) {
+    newTs = oldTs;
+  } else {
+    const now = new Date();
+    newTs = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], now.getHours(), now.getMinutes(), now.getSeconds());
+  }
+
+  sheet.getRange(rowNum, 1).setValue(newTs);
+  sheet.getRange(rowNum, 4, 1, 6).setValues([[
+    e.type === '收入' ? '收入' : '支出',
+    String(e.section || ''),
+    String(e.category).trim(),
+    String(e.account || '').trim(),
+    amount,
+    String(e.note || '').trim()
+  ]]);
+  SpreadsheetApp.flush();
+
+  return { success: true, message: '已成功修改該筆紀錄', rowId: rowNum };
 }
 
 // ------------------------------------------------

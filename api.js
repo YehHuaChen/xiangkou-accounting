@@ -110,6 +110,28 @@ class ApiService {
     return task;
   }
 
+  // 修改記帳紀錄 (覆蓋寫入屬冪等操作，重送也不會產生重複資料；同樣排入寫入佇列)
+  async updateEntry(payload) {
+    if (!this.apiUrl) {
+      return { success: false, message: '尚未設定 API 網址' };
+    }
+
+    const runUpdate = async () => {
+      try {
+        const url = `${this.apiUrl}?action=updateEntryGet&payload=${encodeURIComponent(JSON.stringify(payload))}&_t=${Date.now()}`;
+        const res = await fetch(url);
+        return await res.json();
+      } catch (err) {
+        console.error('修改 API 呼叫失敗:', err);
+        return { success: false, message: err.message };
+      }
+    };
+
+    const task = this.writeQueue.then(runUpdate, runUpdate);
+    this.writeQueue = task.catch(() => {});
+    return task;
+  }
+
   // 取得代墊未還款清單
   async getUnreimbursed() {
     try {
