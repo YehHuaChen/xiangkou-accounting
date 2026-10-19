@@ -1010,6 +1010,35 @@ class BookkeepingApp {
       return;
     }
 
+    // 重複送出防呆：2 分鐘內剛記過完全一樣的內容，先詢問 (跨重新整理也有效)
+    const dupSig = this.getItemSignature({
+      date: date,
+      type: isIncome ? '收入' : '支出',
+      category: category,
+      amount: amount,
+      account: account,
+      note: note
+    });
+    let recentSubmits = [];
+    try {
+      recentSubmits = JSON.parse(localStorage.getItem('xiangkou_recent_submits') || '[]');
+    } catch (err) {}
+    recentSubmits = recentSubmits.filter(r => (now - r.time) < 120000);
+    if (recentSubmits.some(r => r.sig === dupSig)) {
+      if (!confirm('2 分鐘內剛記過一筆一模一樣的紀錄，確定還要再記一筆嗎？')) {
+        this.isSubmitting = false;
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = '送出記帳';
+        }
+        return;
+      }
+    }
+    recentSubmits.push({ sig: dupSig, time: now });
+    try {
+      localStorage.setItem('xiangkou_recent_submits', JSON.stringify(recentSubmits));
+    } catch (err) {}
+
     const payload = {
       id: 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
       date: date,
