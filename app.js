@@ -1457,7 +1457,9 @@ class BookkeepingApp {
       if (res && res.success) {
         this.showToast(`✅ 已成功記錄先還款 $${amt.toLocaleString()} 給 ${personName}！`);
         await this.openAccountsModal();
-        this.fetchMonthData(this.currentYear, this.currentMonth);
+        if (typeof this.syncFromBackend === 'function') {
+          this.syncFromBackend(this.currentYear, this.currentMonth, false);
+        }
       } else {
         alert('還款記錄失敗：' + ((res && res.message) || '未知錯誤'));
       }
