@@ -1061,62 +1061,41 @@ class BookkeepingApp {
       time: Date.now()
     };
 
-    // 樂觀更新 (立即顯示在介面上)
-    this.entries.unshift(payload);
-    this.saveLocalEntries();
-    this.selectedDate = date;
-
-    const parts = date.split('-');
-    this.currentYear = Number(parts[0]);
-    this.currentMonth = Number(parts[1]);
-
-    this.closeAddModal();
-    this.render();
-    const signPrompt = amount < 0 ? `-$${Math.abs(amount)} (負數/折讓)` : `$${amount}`;
-    this.showToast(`✅ 已記錄 ${category} ${signPrompt}`);
-
-    // 後台異步同步至 Google Sheet
+    // 嚴格模式：必須等 Google Sheet 明確回傳寫入成功，才更新畫面與關閉視窗！
     this.pendingWriteCount = (this.pendingWriteCount || 0) + 1;
     this.writeGeneration = (this.writeGeneration || 0) + 1;
-    const addPromise = api.addEntry(payload);
-    payload._pendingPromise = addPromise;
 
     try {
-      const res = await addPromise;
-      if (res && res.success) {
-        console.log('同步至 Google Sheet 成功:', res);
-        if (res.rowId) {
-          const newId = 'row_' + res.rowId;
-          const dupIdx = this.entries.findIndex(item => item !== payload && (item.id === newId || item.rowId === res.rowId));
-          if (dupIdx !== -1) {
-            const pIdx = this.entries.indexOf(payload);
-            if (pIdx !== -1) this.entries.splice(pIdx, 1);
-          } else {
-            payload.id = newId;
-            payload.rowId = res.rowId;
-          }
-          this.saveLocalEntries();
-        }
-      } else if (res && !res.success) {
-        console.warn('雲端寫入提示:', res.message);
-        this.showToast('⚠️ 雲端寫入提示: ' + (res.message || '連線不穩'));
+      const res = await api.addEntry(payload);
+      if (res && res.success && res.rowId) {
+        payload.id = 'row_' + res.rowId;
+        payload.rowId = res.rowId;
+        
+        // 成功寫入雲端後，才加入本地畫面
+        this.entries.unshift(payload);
+        this.saveLocalEntries();
+        this.selectedDate = date;
+
+        const parts = date.split('-');
+        this.currentYear = Number(parts[0]);
+        this.currentMonth = Number(parts[1]);
+
+        this.closeAddModal();
+        this.render();
+        const signPrompt = amount < 0 ? `-$${Math.abs(amount)} (負數/折讓)` : `$${amount}`;
+        this.showToast(`✅ 已成功寫入試算表！${category} ${signPrompt}`);
+      } else {
+        const errMsg = (res && res.message) ? res.message : '雲端無回應';
+        alert(`❌ 寫入 Google 試算表失敗：\n${errMsg}\n\n為保證帳目精確，本筆資料未建立。請檢查網路後再次點擊送出。`);
       }
     } catch (err) {
-      console.warn('同步至雲端失敗 (仍保存在手機上):', err);
-      this.showToast('⚠️ 雲端同步失敗，已先保存在本機');
+      alert(`❌ 連線至 Google 試算表失敗：\n${err.message}\n\n請檢查網路狀態後再試一次。`);
     } finally {
       this.pendingWriteCount = Math.max(0, (this.pendingWriteCount || 1) - 1);
       this.isSubmitting = false;
       if (submitBtn) {
         submitBtn.disabled = false;
         submitBtn.textContent = '送出記帳';
-      }
-      if (this.pendingWriteCount === 0) {
-        setTimeout(() => {
-          if (this.pendingWriteCount === 0) {
-            this.syncFromBackend(this.currentYear, this.currentMonth, false);
-          }
-        }, 1200);
       }
     }
   }
