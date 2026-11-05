@@ -1270,10 +1270,37 @@ class BookkeepingApp {
 
       const summaryHtml = `<div class="reimburse-summary-sub">代墊支出 $${t.expense.toLocaleString()} · 代收扣除 -$${t.income.toLocaleString()} (共 ${t.count} 筆)</div>`;
 
-      // 組合對帳算式 (例如：公司11010 + 好市多10470 + cube11996 + 房租23000 + 上海16493 + 富邦20459 = 93428)
-      const formulaParts = [];
-      let itemsHtml = '';
+      // 組合對帳算式：相同分類合併加總 (例如：好市多7583 + 裝潢35000 + POS11856)
+      const catTotals = {};
+      const catOrder = [];
 
+      t.items.forEach(item => {
+        const cat = (item.category || item.section || (item.note || '').trim() || '款項').trim();
+        const rawAmt = Number(item.amount) || 0;
+        const isIncome = (item.type === '收入');
+        const effectiveAmt = isIncome ? -rawAmt : rawAmt;
+
+        if (catTotals[cat] === undefined) {
+          catTotals[cat] = 0;
+          catOrder.push(cat);
+        }
+        catTotals[cat] += effectiveAmt;
+      });
+
+      const formulaParts = [];
+      catOrder.forEach(cat => {
+        const netAmt = catTotals[cat];
+        if (netAmt === 0) return;
+        const sign = netAmt >= 0 ? '+' : '-';
+        const absAmt = Math.abs(netAmt);
+        formulaParts.push({
+          sign: sign,
+          label: cat,
+          amt: absAmt
+        });
+      });
+
+      let itemsHtml = '';
       t.items.forEach(item => {
         let label = (item.note || '').trim();
         label = label.replace(/^巷口麵店\s*\|\s*/i, '').trim();
@@ -1283,14 +1310,7 @@ class BookkeepingApp {
         const rawAmt = Number(item.amount) || 0;
         const isIncome = (item.type === '收入');
         const effectiveAmt = isIncome ? -rawAmt : rawAmt;
-        const sign = effectiveAmt >= 0 ? '+' : '-';
         const absAmt = Math.abs(rawAmt);
-
-        formulaParts.push({
-          sign: sign,
-          label: label + (rawAmt < 0 ? '(折退)' : ''),
-          amt: absAmt
-        });
 
         const amtFormatted = (effectiveAmt < 0 ? '-' : '+') + '$' + absAmt.toLocaleString();
         const amtClass = (effectiveAmt < 0) ? 'minus' : 'plus';
@@ -1312,14 +1332,18 @@ class BookkeepingApp {
       });
 
       let formulaStr = '';
-      formulaParts.forEach((part, idx) => {
-        if (idx === 0) {
-          formulaStr += (part.sign === '-' ? `-${part.label}${part.amt}` : `${part.label}${part.amt}`);
-        } else {
-          formulaStr += (part.sign === '-' ? ` - ${part.label}${part.amt}` : ` + ${part.label}${part.amt}`);
-        }
-      });
-      formulaStr += ` = ${t.net}`;
+      if (formulaParts.length === 0) {
+        formulaStr = '0 = 0';
+      } else {
+        formulaParts.forEach((part, idx) => {
+          if (idx === 0) {
+            formulaStr += (part.sign === '-' ? `-${part.label}${part.amt}` : `${part.label}${part.amt}`);
+          } else {
+            formulaStr += (part.sign === '-' ? ` - ${part.label}${part.amt}` : ` + ${part.label}${part.amt}`);
+          }
+        });
+        formulaStr += ` = ${t.net}`;
+      }
 
       // 儲存算式至物件供複製使用
       this.personFormulas[name] = `${name}：\n${formulaStr}\n總計：$${t.net.toLocaleString()}`;

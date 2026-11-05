@@ -927,30 +927,47 @@ function getUnreimbursedText_() {
       text += '  已打平 (0 元)\n';
     }
 
-    // 組合算式
-    let formulaParts = [];
+    // 組合算式：相同分類合併加總 (例如：好市多7583 + 裝潢35000 + POS11856)
+    const catTotals = {};
+    const catOrder = [];
+
     t.items.forEach(function (it) {
-      let label = it.note.replace(/^巷口麵店\s*\|\s*/i, '').trim();
-      if (!label) label = it.category || '款項';
-      const amt = Math.abs(it.amount);
-      if (it.type === '收入') {
-        formulaParts.push('-' + label + amt);
+      const cat = (it.category || it.note || '款項').replace(/^巷口麵店\s*\|\s*/i, '').trim();
+      const rawAmt = Number(it.amount) || 0;
+      const effectiveAmt = (it.type === '收入') ? -rawAmt : rawAmt;
+      if (catTotals[cat] === undefined) {
+        catTotals[cat] = 0;
+        catOrder.push(cat);
+      }
+      catTotals[cat] += effectiveAmt;
+    });
+
+    let formulaParts = [];
+    catOrder.forEach(function (cat) {
+      const netAmt = catTotals[cat];
+      if (netAmt === 0) return;
+      if (netAmt < 0) {
+        formulaParts.push('-' + cat + Math.abs(netAmt));
       } else {
-        formulaParts.push(label + amt);
+        formulaParts.push(cat + netAmt);
       }
     });
 
     let formulaStr = '';
-    formulaParts.forEach(function (part, idx) {
-      if (idx === 0) {
-        formulaStr += part;
-      } else if (part.charAt(0) === '-') {
-        formulaStr += ' - ' + part.substring(1);
-      } else {
-        formulaStr += ' + ' + part;
-      }
-    });
-    formulaStr += ' = ' + t.net;
+    if (formulaParts.length === 0) {
+      formulaStr = '0 = 0';
+    } else {
+      formulaParts.forEach(function (part, idx) {
+        if (idx === 0) {
+          formulaStr += part;
+        } else if (part.charAt(0) === '-') {
+          formulaStr += ' - ' + part.substring(1);
+        } else {
+          formulaStr += ' + ' + part;
+        }
+      });
+      formulaStr += ' = ' + t.net;
+    }
 
     text += '  📐 算式: ' + formulaStr + '\n';
     text += '  (共 ' + t.count + ' 筆，代墊 ' + t.expense.toLocaleString() + ' / 代收抵扣 ' + t.income.toLocaleString() + ')\n';
