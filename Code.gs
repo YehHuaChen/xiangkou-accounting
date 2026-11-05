@@ -424,6 +424,35 @@ function handleTextMessage_(event) {
     return;
   }
 
+  if (text.indexOf('先還') === 0 || text.indexOf('還款') === 0) {
+    const parts = text.replace(/^(先還|還款)\s*/, '').trim().split(/\s+/);
+    const personName = parts[0];
+    const amtStr = parts[1];
+    const amt = parseFloat(amtStr);
+    if (!personName || isNaN(amt) || amt <= 0) {
+      replyToLine_(replyToken, '格式有誤，請輸入：先還 人名 金額\n例如：先還 羅 25000');
+      return;
+    }
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const dateStr = yyyy + '-' + mm + '-' + dd;
+
+    writeEntry_(userId, 'LINE', {
+      date: dateStr,
+      type: '收入',
+      section: '其他',
+      category: '公司還款',
+      account: personName,
+      amount: amt,
+      note: '公司先還款'
+    });
+
+    replyToLine_(replyToken, '✅ 已成功記錄先還款 ' + amt.toLocaleString() + ' 元給 ' + personName + '！\n（不會影響損益表，直接從代墊總額扣除）\n輸入「代墊」可查看最新算式與餘額。');
+    return;
+  }
+
   // 其他任何打不懂的文字,引導去用表單,而不是再嘗試解析成一筆記帳
   replyToLine_(replyToken,
     '想記帳的話,輸入「記帳」打開記帳表單 📝\n\n' +

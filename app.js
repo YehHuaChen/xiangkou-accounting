@@ -1376,9 +1376,12 @@ class BookkeepingApp {
             ${itemsHtml}
           </div>
 
-          <div class="reimburse-card-actions">
-            <button class="settle-person-btn" onclick="app.markPersonReimbursed('${name}')">
-              標記已結清
+          <div class="reimburse-card-actions" style="display:flex; gap:10px;">
+            <button class="partial-settle-btn" onclick="app.partialReimburse('${name}')" style="flex:1; background:#ff9500; border:none; color:#fff; border-radius:8px; padding:10px 14px; font-weight:700; font-size:14px; cursor:pointer;">
+              💸 先還部分金額
+            </button>
+            <button class="settle-person-btn" onclick="app.markPersonReimbursed('${name}')" style="flex:1;">
+              標記全數結清
             </button>
           </div>
         </div>
@@ -1417,6 +1420,50 @@ class BookkeepingApp {
       prompt('請手動選取複製算式：', text);
     }
     document.body.removeChild(ta);
+  }
+
+  async partialReimburse(personName) {
+    const input = prompt(`請輸入要先還給「${personName}」的金額（不管分類直接扣抵總欠款）：`, '25000');
+    if (!input) return;
+    const amt = parseFloat(input.replace(/[^\d.]/g, ''));
+    if (!amt || isNaN(amt) || amt <= 0) {
+      alert('請輸入有效的金額');
+      return;
+    }
+
+    const note = prompt(`請輸入備註（選填）：`, '公司先還款') || '公司先還款';
+
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+
+    const payload = {
+      isCustom: true,
+      customType: '收入',
+      customCategory: '公司還款',
+      section: '其他',
+      account: personName,
+      amount: amt,
+      date: todayStr,
+      note: note
+    };
+
+    this.showToast(`⏳ 正在記錄還款 $${amt.toLocaleString()} 給 ${personName}...`);
+
+    try {
+      const res = await api.addEntry(payload);
+      if (res && res.success) {
+        this.showToast(`✅ 已成功記錄先還款 $${amt.toLocaleString()} 給 ${personName}！`);
+        await this.openAccountsModal();
+        this.fetchMonthData(this.currentYear, this.currentMonth);
+      } else {
+        alert('還款記錄失敗：' + ((res && res.message) || '未知錯誤'));
+      }
+    } catch (err) {
+      alert('連線或伺服器錯誤：' + err.message);
+    }
   }
 
   closeAccountsModal() {
