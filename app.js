@@ -1099,9 +1099,11 @@ class BookkeepingApp {
         }
       } else if (res && !res.success) {
         console.warn('雲端寫入提示:', res.message);
+        this.showToast('⚠️ 雲端寫入提示: ' + (res.message || '連線不穩'));
       }
     } catch (err) {
       console.warn('同步至雲端失敗 (仍保存在手機上):', err);
+      this.showToast('⚠️ 雲端同步失敗，已先保存在本機');
     } finally {
       this.pendingWriteCount = Math.max(0, (this.pendingWriteCount || 1) - 1);
       this.isSubmitting = false;
@@ -1728,30 +1730,8 @@ class BookkeepingApp {
         }
       }
 
-      // 1.5 自動修復防護：若剛送出的紀錄因網路重試而在雲端產生超出預期的重複筆數，自動攔截並背景清理多餘列
-      const sigSeenCounts = {};
-      const validServerEntries = [];
-      for (const item of rawValidServerEntries) {
-        const sig = this.getItemSignature(item);
-        const expectedInfo = this.expectedSignatureCounts && this.expectedSignatureCounts[sig];
-        if (expectedInfo && (now - expectedInfo.time) < 300000) {
-          sigSeenCounts[sig] = (sigSeenCounts[sig] || 0) + 1;
-          if (sigSeenCounts[sig] > expectedInfo.count) {
-            console.warn('自動攔截並清理重複寫入的紀錄:', item);
-            this.markItemAsDeleted(item);
-            api.deleteEntry({
-              id: item.rowId || item.id,
-              rowId: item.rowId || item.id,
-              date: item.date,
-              category: item.category,
-              amount: item.amount,
-              account: item.account
-            });
-            continue;
-          }
-        }
-        validServerEntries.push(item);
-      }
+      // 1. 取得雲端最新有效資料 (移除任何背景自動刪除行為，避免誤刪同日相同金額的合法記帳)
+      const validServerEntries = rawValidServerEntries;
 
       // 2. 保留本地尚未被後端收錄的「剛新增」紀錄 (local_ 開頭且在 15 分鐘內的項目)
       const matchedServerIndices = new Set();
