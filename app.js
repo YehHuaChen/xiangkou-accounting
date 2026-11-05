@@ -14,7 +14,7 @@ const CATEGORIES_CONFIG = {
     '薪水支出', '租金', '水費', '天然氣', '天然氣（公司）', '電費', '電話網路', 'POS',
     '營業雜支', '吳伯毅抽成', 'line抽成', '健保', '設備', '裝潢'
   ],
-  '房屋': ['租金', '118房貸', '116房貸', '潭子房貸'],
+  '房屋': ['116租金', '118租金', '118房貸', '116房貸', '潭子房貸'],
   '生活支出': [
     '飲食', '生活雜支', '好市多', '貓', '機車', '汽車', '旅遊',
     '天然氣', '串流平台', '電費'
@@ -393,7 +393,7 @@ class BookkeepingApp {
     if (currentType === '收入') {
       const incomeSections = {
         '營收 (銷售額)': ['現金', '吳柏毅', 'LINE PAY', '其他支付'],
-        '房屋 (租金收入)': ['租金'],
+        '房屋 (租金收入)': ['116租金', '118租金'],
         '其他收入': ['其他']
       };
       Object.keys(incomeSections).forEach(section => {
@@ -976,7 +976,7 @@ class BookkeepingApp {
     // 找出所屬 section
     let section = '生活支出';
     if (isIncome) {
-      if (category === '租金') {
+      if (category === '租金' || category === '116租金' || category === '118租金') {
         section = '房屋';
       } else {
         section = '營收 (銷售額)';

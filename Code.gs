@@ -69,7 +69,7 @@ const CATEGORY_MAP = {
     '薪水支出', '租金', '水費', '天然氣', '電費', '電話網路', 'POS',
     '營業雜支', '吳伯毅抽成', 'line抽成', '健保', '設備', '裝潢'
   ],
-  '房屋': ['租金', '118房貸', '116房貸', '潭子房貸'],
+  '房屋': ['116租金', '118租金', '118房貸', '116房貸', '潭子房貸'],
   '生活支出': [
     '好市多', '飲食', '汽車', '機車', '生活雜支', '旅遊', '貓',
     '天然氣', '串流平台', '電費'
@@ -488,8 +488,13 @@ function submitEntryFromForm(payload) {
     if (!category) {
       return { success: false, message: '請輸入自訂分類的名稱。' };
     }
-    section = '其他';
-    type = payload.customType === '收入' ? '收入' : '支出';
+    if (category === '租金' || category === '116租金' || category === '118租金') {
+      section = '房屋';
+      type = '收入';
+    } else {
+      section = '其他';
+      type = payload.customType === '收入' ? '收入' : '支出';
+    }
   } else {
     section = payload.section;
     category = payload.category;
